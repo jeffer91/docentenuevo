@@ -14,7 +14,6 @@ import {
   FileText,
   FolderArchive,
   LayoutDashboard,
-  LogOut,
   Menu,
   Plus,
   Search,
@@ -66,6 +65,8 @@ type NewTeacherInput = {
   teams: string;
   telegram: string;
 };
+
+const INSTITUTIONAL_USER_ID = "f29a868f-338d-4023-8e18-b744a9b95015";
 
 const navByRole: Record<Role, { label: string; view: View; icon: typeof LayoutDashboard }[]> = {
   coordinator: [
@@ -193,7 +194,7 @@ async function downloadPdfDocument(title: string) {
 
 export default function SiacdApp() {
   const configured = isSupabaseConfigured();
-  const [role, setRole] = useState<Role>("coordinator");
+  const [role, setRole] = useState<Role>("admin");
   const [view, setView] = useState<View>("dashboard");
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [careers, setCareers] = useState<CatalogOption[]>([]);
@@ -204,9 +205,7 @@ export default function SiacdApp() {
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [toast, setToast] = useState("");
   const [sessionReady, setSessionReady] = useState(!configured);
-  const [signedIn, setSignedIn] = useState(false);
   const [profileName, setProfileName] = useState("Usuario SIACD");
-  const [loginError, setLoginError] = useState("");
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -237,16 +236,7 @@ export default function SiacdApp() {
       setProfiles((profileRows ?? []) as SystemProfile[]);
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSignedIn(Boolean(data.session));
-      await applySession(data.session?.user.id);
-      setSessionReady(true);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSignedIn(Boolean(session));
-      void applySession(session?.user.id);
-    });
-    return () => data.subscription.unsubscribe();
+    void applySession(INSTITUTIONAL_USER_ID).finally(() => setSessionReady(true));
   }, [configured]);
 
   useEffect(() => {
@@ -254,27 +244,6 @@ export default function SiacdApp() {
     const timer = window.setTimeout(() => setToast(""), 2600);
     return () => window.clearTimeout(timer);
   }, [toast]);
-
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get("email") ?? "");
-    const password = String(form.get("password") ?? "");
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setLoginError("Supabase no está configurado. El acceso de demostración fue deshabilitado.");
-      return;
-    }
-    setLoginError("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setLoginError("No se pudo iniciar sesión. Verifique sus credenciales.");
-  }
-
-  async function signOut() {
-    const supabase = getSupabaseBrowserClient();
-    if (supabase) await supabase.auth.signOut();
-    setSignedIn(false);
-  }
 
   async function saveTeacher(input: NewTeacherInput) {
     const supabase = getSupabaseBrowserClient();
@@ -325,7 +294,6 @@ export default function SiacdApp() {
 
   if (!sessionReady) return <div className="login-form-wrap">Preparando SIACD…</div>;
   if (!configured) return <ConfigurationRequired />;
-  if (!signedIn) return <Login onSubmit={signIn} error={loginError} />;
 
   return (
     <div className="siacd-shell">
@@ -340,7 +308,7 @@ export default function SiacdApp() {
           {navByRole[role].map((item) => <button key={item.view} className={`nav-button ${view === item.view ? "active" : ""}`} onClick={() => { setView(item.view); setMobileOpen(false); }}><item.icon />{item.label}</button>)}
         </nav>
         <div className="sidebar-spacer" />
-        <button className="nav-button" onClick={signOut}><LogOut />Cerrar sesión</button>
+        <button className="nav-button" onClick={() => setToast("Acceso institucional directo activo")}><ShieldCheck />Acceso directo activo</button>
         <div className="user-card"><div className="avatar">{initials(profileName)}</div><div><strong>{profileName}</strong><span>{role === "coordinator" ? "Coordinador de Carrera" : role === "approver" ? "Autoridad aprobadora" : "Administrador general"}</span></div></div>
       </aside>
       {mobileOpen && <button aria-label="Cerrar menú" className="mobile-scrim" onClick={() => setMobileOpen(false)} />}
@@ -368,10 +336,6 @@ function InstitutionBrand({ compact = false }: { compact?: boolean }) {
 
 function ConfigurationRequired() {
   return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">ITSQMET · Sistema institucional</p><h1>Conexión segura requerida</h1><p>El modo demostración está deshabilitado. El SIACD solo funciona conectado a la base institucional de Supabase.</p></div><p>Proceso CGC-PRO-121 · Uso institucional</p></section><section className="login-form-wrap"><div className="login-form"><div className="round-icon"><ShieldCheck /></div><h2>Configuración pendiente</h2><p>Configure las variables públicas de Supabase y vuelva a publicar la aplicación.</p><div className="error-note">No se encontraron VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.</div></div></section></div>;
-}
-
-function Login({ onSubmit, error }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; error: string }) {
-  return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">ITSQMET · Gestión académica</p><h1>Acompañar bien también es enseñar.</h1><p>Un solo lugar para orientar, evaluar y certificar el proceso de incorporación de cada docente nuevo, con trazabilidad y evidencia institucional.</p></div><p>Proceso CGC-PRO-121 · Uso institucional</p></section><section className="login-form-wrap"><form className="login-form" onSubmit={onSubmit}><div className="round-icon"><ShieldCheck /></div><h2>Bienvenido al SIACD</h2><p>Ingrese con la cuenta asignada por el administrador institucional.</p>{error && <div className="error-note">{error}</div>}<div className="field"><label>Correo institucional</label><input name="email" type="email" required placeholder="nombre@institucion.edu.ec" /></div><div className="field"><label>Contraseña</label><input name="password" type="password" required placeholder="••••••••" /></div><button className="primary-button" type="submit">Ingresar al sistema <ArrowRight size={15} /></button><div className="login-note">Acceso protegido mediante Supabase Auth. Las funciones dependen del rol institucional asignado.</div></form></section></div>;
 }
 
 function Header({ role, view, onNew }: { role: Role; view: View; onNew: () => void }) {
