@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   root: "pages",
+  publicDir: "../public",
   base: process.env.GITHUB_ACTIONS ? "/siacd-docente/" : "/",
   plugins: [react()],
   build: {
