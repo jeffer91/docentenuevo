@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let browserClient: SupabaseClient | null = null;
 
-const viteEnvironment = import.meta.env as Record<string, string | undefined>;
+const viteEnvironment = import.meta.env as unknown as Record<string, string | undefined>;
 
 export function isSupabaseConfigured() {
   return Boolean(

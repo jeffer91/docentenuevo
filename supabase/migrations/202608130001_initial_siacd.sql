@@ -20,6 +20,34 @@ create table public.profiles (
   updated_at timestamptz not null default now()
 );
 
+create function public.handle_new_siacd_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, full_name, role)
+  values (
+    new.id,
+    coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), new.email, 'Usuario SIACD'),
+    case
+      when new.raw_user_meta_data ->> 'siacd_role' in ('admin', 'coordinator', 'approver')
+        then (new.raw_user_meta_data ->> 'siacd_role')::public.siacd_role
+      else 'coordinator'::public.siacd_role
+    end
+  )
+  on conflict (id) do update
+    set full_name = excluded.full_name,
+        updated_at = now();
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created_siacd
+after insert on auth.users
+for each row execute procedure public.handle_new_siacd_user();
+
 create table public.campuses (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
@@ -210,11 +238,11 @@ create index followups_expedient_idx on public.followups(expedient_id);
 
 create function public.current_siacd_role()
 returns public.siacd_role
-language sql stable security invoker
+language sql stable security definer
 set search_path = ''
 as $$
   select coalesce(
-    nullif((select auth.jwt()) -> 'app_metadata' ->> 'siacd_role', '')::public.siacd_role,
+    (select p.role from public.profiles p where p.id = (select auth.uid()) and p.active),
     'coordinator'::public.siacd_role
   )
 $$;

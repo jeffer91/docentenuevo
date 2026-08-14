@@ -21,7 +21,7 @@ Aplicación web para gestionar el expediente completo de acompañamiento a docen
 3. Copie `.env.example` como `.env.local` y complete las variables públicas de Supabase.
 4. Ejecute `npm run dev`.
 
-Sin variables de Supabase, la aplicación inicia en **modo demostración** con datos ficticios y permite revisar los tres roles. Con Supabase configurado, usa autenticación real y el rol del perfil; el selector de roles desaparece.
+El modo demostración está deshabilitado. La aplicación solo permite iniciar sesión cuando las variables de Supabase están configuradas y utiliza exclusivamente datos institucionales persistidos. Los roles se obtienen del perfil autenticado.
 
 ## Base de datos
 

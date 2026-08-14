@@ -1,21 +1,18 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import {
   Activity,
-  Archive,
   ArrowRight,
   BarChart3,
   Bell,
-  BookOpenCheck,
   CalendarDays,
-  CheckCircle2,
   ChevronRight,
   ClipboardCheck,
   Clock3,
   FileCheck2,
   FileText,
   FolderArchive,
-  GraduationCap,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -50,16 +47,25 @@ type Teacher = {
   subject: string;
   period: string;
   progress: number;
-  status: "En acompañamiento" | "Con brechas" | "Pendiente de aprobación" | "Certificado";
+  status: "En acompañamiento" | "Con brechas" | "Pendiente de aprobación" | "Aprobado" | "Certificado";
   currentHito: string;
+  criticalGaps: number;
 };
 
-const sampleTeachers: Teacher[] = [
-  { id: "doc-001", name: "Carolina Andrade Mena", career: "Enfermería", subject: "Fundamentos de Enfermería", period: "Mayo – Noviembre 2026", progress: 72, status: "En acompañamiento", currentHito: "H4 · Seguimiento 1" },
-  { id: "doc-002", name: "Mateo Cevallos Ruiz", career: "Desarrollo de Software", subject: "Programación Web", period: "Mayo – Noviembre 2026", progress: 48, status: "Con brechas", currentHito: "H3 · Inicio docencia" },
-  { id: "doc-003", name: "Daniela Jácome Silva", career: "Marketing Digital", subject: "Analítica Digital", period: "Mayo – Noviembre 2026", progress: 86, status: "Pendiente de aprobación", currentHito: "H6 · Cierre" },
-  { id: "doc-004", name: "José Morales Ortiz", career: "Mecánica Automotriz", subject: "Electricidad Automotriz", period: "Febrero – Agosto 2026", progress: 100, status: "Certificado", currentHito: "Proceso finalizado" },
-];
+type CatalogOption = { id: string; name: string };
+type SystemProfile = { id: string; full_name: string; role: Role; active: boolean };
+type NewTeacherInput = {
+  name: string;
+  careerId: string;
+  periodId: string;
+  subject: string;
+  modality: string;
+  startDate: string;
+  schedule: string;
+  email: string;
+  teams: string;
+  telegram: string;
+};
 
 const navByRole: Record<Role, { label: string; view: View; icon: typeof LayoutDashboard }[]> = {
   coordinator: [
@@ -93,10 +99,52 @@ function initials(name: string) {
 }
 
 function statusClass(status: Teacher["status"]) {
-  if (status === "Certificado") return "green";
+  if (status === "Certificado" || status === "Aprobado") return "green";
   if (status === "Con brechas") return "red";
   if (status === "Pendiente de aprobación") return "gold";
   return "blue";
+}
+
+function relationName(value: unknown) {
+  const relation = Array.isArray(value) ? value[0] : value;
+  return relation && typeof relation === "object" && "name" in relation ? String(relation.name) : "Sin asignar";
+}
+
+function relationFullName(value: unknown) {
+  const relation = Array.isArray(value) ? value[0] : value;
+  return relation && typeof relation === "object" && "full_name" in relation ? String(relation.full_name) : "Sin nombre";
+}
+
+function mapStatus(value: string): Teacher["status"] {
+  if (value === "with_gaps") return "Con brechas";
+  if (["ready_for_review", "pending_approval", "returned"].includes(value)) return "Pendiente de aprobación";
+  if (value === "approved") return "Aprobado";
+  if (["certified", "archived"].includes(value)) return "Certificado";
+  return "En acompañamiento";
+}
+
+function mapExpedient(row: Record<string, unknown>): Teacher {
+  const schedules = Array.isArray(row.hito_schedules) ? row.hito_schedules as Record<string, unknown>[] : [];
+  const executed = schedules.filter((schedule) => Boolean(schedule.executed_on));
+  const ordered = [...executed].sort((a, b) => String(a.hito_id).localeCompare(String(b.hito_id)));
+  const last = ordered.at(-1);
+  const status = mapStatus(String(row.status ?? "draft"));
+  const progress = status === "Certificado" ? 100 : Math.min(100, Math.round((executed.length / 6) * 100));
+  const currentHito = status === "Certificado"
+    ? "Proceso finalizado"
+    : last ? `${String(last.hito_id)} · completado` : "H1 · Inducción";
+
+  return {
+    id: String(row.id),
+    name: relationFullName(row.teachers),
+    career: relationName(row.careers),
+    subject: String(row.subject_names ?? "Sin asignatura"),
+    period: relationName(row.academic_periods),
+    progress,
+    status,
+    currentHito,
+    criticalGaps: Number(row.critical_gaps ?? 0),
+  };
 }
 
 function downloadBlob(content: BlobPart, type: string, filename: string) {
@@ -116,14 +164,14 @@ function downloadExcelBackup(teachers: Teacher[]) {
   const headings = ["Docente", "Carrera", "Asignatura", "Período", "Avance", "Estado", "Hito actual"];
   const rows = teachers.map((teacher) => [teacher.name, teacher.career, teacher.subject, teacher.period, `${teacher.progress}%`, teacher.status, teacher.currentHito]);
   const cells = (row: string[], header = false) => row.map((cell) => `<Cell${header ? ' ss:StyleID="Header"' : ""}><Data ss:Type="String">${xmlText(cell)}</Data></Cell>`).join("");
-  const xml = `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0D6759" ss:Pattern="Solid"/></Style></Styles><Worksheet ss:Name="Expedientes"><Table><Row>${cells(headings, true)}</Row>${rows.map((row) => `<Row>${cells(row)}</Row>`).join("")}</Table></Worksheet></Workbook>`;
+  const xml = `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#071C34" ss:Pattern="Solid"/></Style></Styles><Worksheet ss:Name="Expedientes"><Table><Row>${cells(headings, true)}</Row>${rows.map((row) => `<Row>${cells(row)}</Row>`).join("")}</Table></Worksheet></Workbook>`;
   downloadBlob(xml, "application/vnd.ms-excel;charset=utf-8", `respaldo-siacd-${new Date().toISOString().slice(0, 10)}.xls`);
 }
 
 async function downloadPdfDocument(title: string) {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "mm", format: "a4" });
-  pdf.setFillColor(13, 103, 89);
+  pdf.setFillColor(7, 28, 52);
   pdf.rect(0, 0, 210, 32, "F");
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(18);
@@ -144,15 +192,19 @@ async function downloadPdfDocument(title: string) {
 }
 
 export default function SiacdApp() {
-  const demoMode = !isSupabaseConfigured();
+  const configured = isSupabaseConfigured();
   const [role, setRole] = useState<Role>("coordinator");
   const [view, setView] = useState<View>("dashboard");
-  const [teachers, setTeachers] = useState<Teacher[]>(sampleTeachers);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [careers, setCareers] = useState<CatalogOption[]>([]);
+  const [periods, setPeriods] = useState<CatalogOption[]>([]);
+  const [profiles, setProfiles] = useState<SystemProfile[]>([]);
+  const [currentUserId, setCurrentUserId] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [toast, setToast] = useState("");
-  const [sessionReady, setSessionReady] = useState(demoMode);
-  const [signedIn, setSignedIn] = useState(demoMode);
+  const [sessionReady, setSessionReady] = useState(!configured);
+  const [signedIn, setSignedIn] = useState(false);
   const [profileName, setProfileName] = useState("Usuario SIACD");
   const [loginError, setLoginError] = useState("");
 
@@ -162,15 +214,27 @@ export default function SiacdApp() {
 
     async function applySession(userId?: string) {
       if (!userId || !supabase) return;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, role")
-        .eq("id", userId)
-        .single();
+      setCurrentUserId(userId);
+      const [{ data: profile }, { data: careerRows }, { data: periodRows }, { data: expedientRows }, { data: profileRows }] = await Promise.all([
+        supabase.from("profiles").select("full_name, role").eq("id", userId).single(),
+        supabase.from("careers").select("id, name").eq("active", true).order("name"),
+        supabase.from("academic_periods").select("id, name").eq("active", true).order("starts_on", { ascending: false }),
+        supabase.from("expedients").select("id, status, subject_names, critical_gaps, teachers(full_name), careers(name), academic_periods(name), hito_schedules(hito_id, executed_on)").order("created_at", { ascending: false }),
+        supabase.from("profiles").select("id, full_name, role, active").order("full_name"),
+      ]);
+      if (!profile) {
+        setLoginError("La cuenta existe, pero no tiene un perfil SIACD asignado. Solicite acceso al administrador.");
+        await supabase.auth.signOut();
+        return;
+      }
       if (profile?.full_name) setProfileName(profile.full_name);
       if (profile?.role && ["coordinator", "approver", "admin"].includes(profile.role)) {
         setRole(profile.role as Role);
       }
+      setCareers((careerRows ?? []) as CatalogOption[]);
+      setPeriods((periodRows ?? []) as CatalogOption[]);
+      setTeachers(((expedientRows ?? []) as Record<string, unknown>[]).map(mapExpedient));
+      setProfiles((profileRows ?? []) as SystemProfile[]);
     }
 
     supabase.auth.getSession().then(async ({ data }) => {
@@ -183,7 +247,7 @@ export default function SiacdApp() {
       void applySession(session?.user.id);
     });
     return () => data.subscription.unsubscribe();
-  }, [demoMode]);
+  }, [configured]);
 
   useEffect(() => {
     if (!toast) return;
@@ -198,7 +262,7 @@ export default function SiacdApp() {
     const password = String(form.get("password") ?? "");
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
-      setSignedIn(true);
+      setLoginError("Supabase no está configurado. El acceso de demostración fue deshabilitado.");
       return;
     }
     setLoginError("");
@@ -209,16 +273,59 @@ export default function SiacdApp() {
   async function signOut() {
     const supabase = getSupabaseBrowserClient();
     if (supabase) await supabase.auth.signOut();
-    else setSignedIn(false);
+    setSignedIn(false);
+  }
+
+  async function saveTeacher(input: NewTeacherInput) {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase || !currentUserId) {
+      setToast("No existe una sesión institucional activa");
+      return;
+    }
+    const { data: teacher, error: teacherError } = await supabase
+      .from("teachers")
+      .insert({
+        full_name: input.name,
+        institutional_email: input.email || null,
+        started_institution_on: input.startDate,
+        created_by: currentUserId,
+      })
+      .select("id")
+      .single();
+    if (teacherError || !teacher) {
+      setToast(`No se pudo registrar el docente: ${teacherError?.message ?? "error de base de datos"}`);
+      return;
+    }
+    const { data: expedient, error: expedientError } = await supabase
+      .from("expedients")
+      .insert({
+        teacher_id: teacher.id,
+        career_id: input.careerId,
+        period_id: input.periodId,
+        coordinator_id: currentUserId,
+        subject_names: input.subject,
+        modality: input.modality,
+        schedule_text: input.schedule || null,
+        activities_start_on: input.startDate,
+        teams_code: input.teams || null,
+        telegram_url: input.telegram || null,
+        status: "in_progress",
+      })
+      .select("id, status, subject_names, critical_gaps, teachers(full_name), careers(name), academic_periods(name), hito_schedules(hito_id, executed_on)")
+      .single();
+    if (expedientError || !expedient) {
+      await supabase.from("teachers").delete().eq("id", teacher.id);
+      setToast(`No se pudo crear el expediente: ${expedientError?.message ?? "error de base de datos"}`);
+      return;
+    }
+    setTeachers((current) => [mapExpedient(expedient as Record<string, unknown>), ...current]);
+    setShowTeacherModal(false);
+    setToast("Docente y expediente guardados en Supabase");
   }
 
   if (!sessionReady) return <div className="login-form-wrap">Preparando SIACD…</div>;
+  if (!configured) return <ConfigurationRequired />;
   if (!signedIn) return <Login onSubmit={signIn} error={loginError} />;
-
-  const changeRole = (next: Role) => {
-    setRole(next);
-    setView("dashboard");
-  };
 
   return (
     <div className="siacd-shell">
@@ -227,7 +334,7 @@ export default function SiacdApp() {
         <button className="icon-button" aria-label="Abrir menú" onClick={() => setMobileOpen(true)}><Menu size={18} /></button>
       </div>
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
-        <div className="brand"><div className="brand-mark"><GraduationCap size={24} /></div><div><strong>SIACD</strong><span>Acompañamiento<br />Docente</span></div></div>
+        <InstitutionBrand compact />
         <div className="nav-label">Gestión</div>
         <nav className="nav">
           {navByRole[role].map((item) => <button key={item.view} className={`nav-button ${view === item.view ? "active" : ""}`} onClick={() => { setView(item.view); setMobileOpen(false); }}><item.icon />{item.label}</button>)}
@@ -238,35 +345,48 @@ export default function SiacdApp() {
       </aside>
       {mobileOpen && <button aria-label="Cerrar menú" className="mobile-scrim" onClick={() => setMobileOpen(false)} />}
       <main className="main">
-        <Header role={role} view={view} onRole={changeRole} onNew={() => setShowTeacherModal(true)} allowRoleSwitch={demoMode} />
-        {view === "dashboard" && <Dashboard role={role} teachers={teachers} onViewTeachers={() => setView("teachers")} onAction={(msg) => setToast(msg)} />}
+        <Header role={role} view={view} onNew={() => setShowTeacherModal(true)} />
+        {view === "dashboard" && <Dashboard teachers={teachers} onViewTeachers={() => setView("teachers")} onAction={(msg) => setToast(msg)} />}
         {view === "teachers" && <Teachers teachers={teachers} onNew={() => setShowTeacherModal(true)} onAction={(msg) => setToast(msg)} />}
         {view === "schedule" && <Schedule />}
-        {view === "reviews" && <Reviews role={role} onAction={(msg) => setToast(msg)} />}
+        {view === "reviews" && <Reviews role={role} teachers={teachers} onAction={(msg) => setToast(msg)} />}
         {view === "evidence" && <Evidence role={role} onAction={(msg) => setToast(msg)} />}
         {view === "documents" && <Documents role={role} teachers={teachers} onAction={(msg) => setToast(msg)} />}
-        {view === "reports" && <Reports />}
-        {view === "users" && <UsersPanel onAction={(msg) => setToast(msg)} />}
-        {view === "settings" && <SettingsPanel onAction={(msg) => setToast(msg)} />}
+        {view === "reports" && <Reports teachers={teachers} />}
+        {view === "users" && <UsersPanel users={profiles} onAction={(msg) => setToast(msg)} />}
+        {view === "settings" && <SettingsPanel periods={periods} onAction={(msg) => setToast(msg)} />}
       </main>
-      {showTeacherModal && <TeacherModal onClose={() => setShowTeacherModal(false)} onSave={(teacher) => { setTeachers((current) => [teacher, ...current]); setShowTeacherModal(false); setToast("Docente registrado correctamente"); }} />}
+      {showTeacherModal && <TeacherModal careers={careers} periods={periods} onClose={() => setShowTeacherModal(false)} onSave={saveTeacher} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
 
+function InstitutionBrand({ compact = false }: { compact?: boolean }) {
+  return <div className={`institution-brand ${compact ? "compact" : ""}`}><img src="/logo-itsqmet.png" alt="Instituto Tecnológico Superior Quito Metropolitano" /><span>SIACD · Acompañamiento Docente</span></div>;
+}
+
+function ConfigurationRequired() {
+  return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">ITSQMET · Sistema institucional</p><h1>Conexión segura requerida</h1><p>El modo demostración está deshabilitado. El SIACD solo funciona conectado a la base institucional de Supabase.</p></div><p>Proceso CGC-PRO-121 · Uso institucional</p></section><section className="login-form-wrap"><div className="login-form"><div className="round-icon"><ShieldCheck /></div><h2>Configuración pendiente</h2><p>Configure las variables públicas de Supabase y vuelva a publicar la aplicación.</p><div className="error-note">No se encontraron VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.</div></div></section></div>;
+}
+
 function Login({ onSubmit, error }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; error: string }) {
-  return <div className="login-page"><section className="login-art"><div className="brand"><div className="brand-mark"><GraduationCap size={25} /></div><div><strong>SIACD</strong><span>Sistema institucional</span></div></div><div><p className="eyebrow">ITSQMET · Gestión académica</p><h1>Acompañar bien también es enseñar.</h1><p>Un solo lugar para orientar, evaluar y certificar el proceso de incorporación de cada docente nuevo, con trazabilidad y evidencia institucional.</p></div><p>Proceso CGC-PRO-121 · Uso institucional</p></section><section className="login-form-wrap"><form className="login-form" onSubmit={onSubmit}><div className="round-icon"><ShieldCheck /></div><h2>Bienvenido al SIACD</h2><p>Ingrese con la cuenta asignada por el administrador institucional.</p>{error && <div className="error-note">{error}</div>}<div className="field"><label>Correo institucional</label><input name="email" type="email" required placeholder="nombre@institucion.edu.ec" /></div><div className="field"><label>Contraseña</label><input name="password" type="password" required placeholder="••••••••" /></div><button className="primary-button" type="submit">Ingresar al sistema <ArrowRight size={15} /></button><div className="login-note">Las funciones y la información visible dependen del rol asignado: coordinador, autoridad aprobadora o administrador.</div></form></section></div>;
+  return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">ITSQMET · Gestión académica</p><h1>Acompañar bien también es enseñar.</h1><p>Un solo lugar para orientar, evaluar y certificar el proceso de incorporación de cada docente nuevo, con trazabilidad y evidencia institucional.</p></div><p>Proceso CGC-PRO-121 · Uso institucional</p></section><section className="login-form-wrap"><form className="login-form" onSubmit={onSubmit}><div className="round-icon"><ShieldCheck /></div><h2>Bienvenido al SIACD</h2><p>Ingrese con la cuenta asignada por el administrador institucional.</p>{error && <div className="error-note">{error}</div>}<div className="field"><label>Correo institucional</label><input name="email" type="email" required placeholder="nombre@institucion.edu.ec" /></div><div className="field"><label>Contraseña</label><input name="password" type="password" required placeholder="••••••••" /></div><button className="primary-button" type="submit">Ingresar al sistema <ArrowRight size={15} /></button><div className="login-note">Acceso protegido mediante Supabase Auth. Las funciones dependen del rol institucional asignado.</div></form></section></div>;
 }
 
-function Header({ role, view, onRole, onNew, allowRoleSwitch }: { role: Role; view: View; onRole: (role: Role) => void; onNew: () => void; allowRoleSwitch: boolean }) {
+function Header({ role, view, onNew }: { role: Role; view: View; onNew: () => void }) {
   const titles: Record<View, [string, string]> = { dashboard:["Panel de acompañamiento","Seguimiento institucional de docentes nuevos"], teachers:["Docentes y expedientes","Gestione todos los procesos bajo su responsabilidad"], schedule:["Cronograma institucional","Fechas, hitos y alertas de cumplimiento"], reviews:["Evaluaciones y aprobación","Revise criterios, resultados y expedientes"], evidence:["Evidencias y certificación","Archivos, capturas, enlaces y certificados"], documents:["Documentos del expediente","Actas, informes, respaldos y archivo final"], reports:["Estadísticas y reportes","Indicadores para la toma de decisiones"], users:["Usuarios y permisos","Cuentas, roles y asignaciones"], settings:["Configuración del SIACD","Períodos, carreras, criterios y plantillas"] };
-  return <header className="topline"><div><div className="eyebrow">Sistema Integral de Acompañamiento</div><h1>{titles[view][0]}</h1><p className="subtitle">{titles[view][1]}</p></div><div className="top-actions">{allowRoleSwitch && <div className="role-switch" aria-label="Vista de demostración por rol"><button className={role === "coordinator" ? "active" : ""} onClick={() => onRole("coordinator")}>Coordinador</button><button className={role === "approver" ? "active" : ""} onClick={() => onRole("approver")}>Aprobación</button><button className={role === "admin" ? "active" : ""} onClick={() => onRole("admin")}>Administrador</button></div>}<button className="icon-button" aria-label="Notificaciones"><Bell size={17} /></button>{role === "coordinator" && <button className="primary-button" onClick={onNew}><Plus size={15} />Nuevo docente</button>}</div></header>;
+  return <header className="topline"><div><div className="eyebrow">Sistema Integral de Acompañamiento</div><h1>{titles[view][0]}</h1><p className="subtitle">{titles[view][1]}</p></div><div className="top-actions"><button className="icon-button" aria-label="Notificaciones"><Bell size={17} /></button>{role === "coordinator" && <button className="primary-button" onClick={onNew}><Plus size={15} />Nuevo docente</button>}</div></header>;
 }
 
-function Dashboard({ role, teachers, onViewTeachers, onAction }: { role: Role; teachers: Teacher[]; onViewTeachers: () => void; onAction: (msg: string) => void }) {
+function Dashboard({ teachers, onViewTeachers, onAction }: { teachers: Teacher[]; onViewTeachers: () => void; onAction: (msg: string) => void }) {
   const active = teachers.filter((t) => t.status !== "Certificado").length;
-  return <><div className="hero-grid"><section className="hero-card"><div className="eyebrow">Período Mayo – Noviembre 2026</div><h2>{role === "coordinator" ? "Su acompañamiento docente está al día" : role === "approver" ? "Tres expedientes esperan su validación" : "El sistema institucional funciona con normalidad"}</h2><p>{role === "coordinator" ? "Continúe documentando cada intervención. El próximo hito con vencimiento corresponde al seguimiento del primer tercio." : role === "approver" ? "Revise las evidencias, observaciones y resultados antes de habilitar la certificación." : "Supervise coordinadores, períodos, expedientes y el uso del almacenamiento desde un solo panel."}</p><div className="hero-progress"><div className="progress-track"><div className="progress-fill" style={{ width:"68%" }} /></div><strong>68% de avance global</strong></div></section><aside className="approval-card"><div className="round-icon"><Clock3 size={20} /></div><h3>{role === "approver" ? "Revisión prioritaria" : "Próximo vencimiento"}</h3><p>{role === "approver" ? "El expediente de Daniela Jácome cumple los criterios automáticos y está listo para revisión documental." : "Seguimiento 1 de Mateo Cevallos vence el 18 de agosto. Mantiene dos competencias críticas con brecha."}</p><button className="secondary-button" onClick={() => onAction("Expediente abierto para revisión")}>Abrir expediente <ChevronRight size={14} /></button></aside></div><div className="metric-grid"><Metric icon={Users} label="Docentes activos" value={String(active)} note="En el período actual" /><Metric icon={ClipboardCheck} label="Hitos por completar" value="11" note="3 vencen esta semana" tone="gold" /><Metric icon={Activity} label="Brechas críticas" value="4" note="Requieren plan de mejora" tone="red" /><Metric icon={FileCheck2} label="Certificados" value="12" note="Emitidos en 2026" tone="blue" /></div><div className="content-grid"><section className="panel"><div className="panel-head"><div><h3>Expedientes recientes</h3><p>Avance y estado de los docentes asignados</p></div><button className="text-link" onClick={onViewTeachers}>Ver todos</button></div><div className="teacher-list">{teachers.slice(0,4).map((teacher) => <TeacherRow key={teacher.id} teacher={teacher} onAction={onAction} />)}</div></section><section className="panel"><div className="panel-head"><div><h3>Actividad reciente</h3><p>Trazabilidad del proceso</p></div></div><div className="timeline"><Timeline icon={UploadCloud} title="Evidencia cargada" text="Captura de configuración EVA · Carolina Andrade" time="Hace 38 minutos" /><Timeline icon={ClipboardCheck} title="Hito evaluado" text="H3 · Inicio docencia · Mateo Cevallos" time="Ayer, 16:42" /><Timeline icon={FileCheck2} title="Expediente enviado" text="Daniela Jácome · pendiente de aprobación" time="12 de agosto" /><Timeline icon={CheckCircle2} title="Certificado emitido" text="José Morales · Mecánica Automotriz" time="9 de agosto" /></div></section></div></>;
+  const pending = teachers.filter((t) => t.status === "Pendiente de aprobación");
+  const certified = teachers.filter((t) => t.status === "Certificado").length;
+  const gaps = teachers.reduce((total, teacher) => total + teacher.criticalGaps, 0);
+  const average = teachers.length ? Math.round(teachers.reduce((total, teacher) => total + teacher.progress, 0) / teachers.length) : 0;
+  const priority = pending[0] ?? teachers.find((teacher) => teacher.criticalGaps > 0);
+  return <><div className="hero-grid"><section className="hero-card"><div className="eyebrow">Información institucional en tiempo real</div><h2>{teachers.length ? `${teachers.length} expediente${teachers.length === 1 ? "" : "s"} registrado${teachers.length === 1 ? "" : "s"}` : "El SIACD está listo para iniciar"}</h2><p>{teachers.length ? "Los indicadores se calculan únicamente con información guardada en Supabase." : "Registre el primer docente para iniciar su expediente de acompañamiento institucional."}</p><div className="hero-progress"><div className="progress-track"><div className="progress-fill" style={{ width:`${average}%` }} /></div><strong>{average}% de avance global</strong></div></section><aside className="approval-card"><div className="round-icon"><Clock3 size={20} /></div><h3>{priority ? "Atención prioritaria" : "Sin pendientes"}</h3><p>{priority ? `${priority.name} · ${priority.status} · ${priority.currentHito}` : "No existen expedientes pendientes de revisión o con brechas registradas."}</p>{priority && <button className="secondary-button" onClick={() => onAction(`Expediente de ${priority.name} abierto`)}>Abrir expediente <ChevronRight size={14} /></button>}</aside></div><div className="metric-grid"><Metric icon={Users} label="Docentes activos" value={String(active)} note="Registros visibles para su rol" /><Metric icon={ClipboardCheck} label="Por aprobar" value={String(pending.length)} note="Expedientes enviados" tone="gold" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Registradas en expedientes" tone="red" /><Metric icon={FileCheck2} label="Certificados" value={String(certified)} note="Procesos finalizados" tone="blue" /></div><div className="content-grid"><section className="panel"><div className="panel-head"><div><h3>Expedientes recientes</h3><p>Información recuperada desde Supabase</p></div><button className="text-link" onClick={onViewTeachers}>Ver todos</button></div><div className="teacher-list">{teachers.length ? teachers.slice(0,4).map((teacher) => <TeacherRow key={teacher.id} teacher={teacher} onAction={onAction} />) : <div className="empty-state"><h3>Sin expedientes</h3><p>Todavía no existen docentes registrados para este usuario.</p></div>}</div></section><section className="panel"><div className="panel-head"><div><h3>Estado de expedientes</h3><p>Últimos registros disponibles</p></div></div><div className="timeline">{teachers.length ? teachers.slice(0,4).map((teacher) => <Timeline key={teacher.id} icon={FolderArchive} title={teacher.status} text={`${teacher.name} · ${teacher.career}`} time={`${teacher.progress}% completado`} />) : <div className="empty-state"><p>La actividad aparecerá al registrar información.</p></div>}</div></section></div></>;
 }
 
 function Metric({ icon: Icon, label, value, note, tone="" }: { icon: typeof Users; label: string; value: string; note: string; tone?: string }) { return <article className="metric-card"><div className="metric-top"><span>{label}</span><span className={`metric-icon ${tone}`}><Icon size={15} /></span></div><div className="metric-value">{value}</div><div className="metric-note">{note}</div></article>; }
@@ -274,22 +394,26 @@ function TeacherRow({ teacher, onAction }: { teacher: Teacher; onAction: (msg:st
 function Timeline({icon:Icon,title,text,time}:{icon:typeof UploadCloud;title:string;text:string;time:string}) { return <div className="timeline-item"><div className="timeline-icon"><Icon size={15}/></div><div><strong>{title}</strong><p>{text}</p><time>{time}</time></div></div>; }
 
 function Teachers({ teachers, onNew, onAction }: { teachers: Teacher[]; onNew:()=>void; onAction:(msg:string)=>void }) {
-  const [query,setQuery]=useState(""); const filtered=useMemo(()=>teachers.filter(t=>`${t.name} ${t.career} ${t.subject}`.toLowerCase().includes(query.toLowerCase())),[teachers,query]);
-  return <section className="section-card"><div className="toolbar"><div className="search"><Search size={15}/><input aria-label="Buscar docentes" placeholder="Buscar por docente, carrera o asignatura" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="filters"><select className="select" aria-label="Filtrar período"><option>Todos los períodos</option><option>Mayo – Noviembre 2026</option><option>Febrero – Agosto 2026</option></select><select className="select" aria-label="Filtrar estado"><option>Todos los estados</option><option>En acompañamiento</option><option>Con brechas</option><option>Certificado</option></select><button className="primary-button" onClick={onNew}><Plus size={14}/>Registrar docente</button></div></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Docente</th><th>Carrera / asignatura</th><th>Período</th><th>Hito actual</th><th>Avance</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map(t=><tr key={t.id}><td><div className="teacher"><div className="teacher-avatar">{initials(t.name)}</div><strong>{t.name}</strong></div></td><td>{t.career}<span className="row-meta">{t.subject}</span></td><td>{t.period}</td><td>{t.currentHito}</td><td>{t.progress}%</td><td><span className={`badge ${statusClass(t.status)}`}>{t.status}</span></td><td><button className="row-action" onClick={()=>onAction(`Expediente de ${t.name} abierto`)} aria-label="Abrir"><ChevronRight size={14}/></button></td></tr>)}</tbody></table></div></section>;
+  const [query,setQuery]=useState("");
+  const [period,setPeriod]=useState("");
+  const [status,setStatus]=useState("");
+  const periodNames = useMemo(() => [...new Set(teachers.map((teacher) => teacher.period))], [teachers]);
+  const filtered=useMemo(()=>teachers.filter(t=>`${t.name} ${t.career} ${t.subject}`.toLowerCase().includes(query.toLowerCase()) && (!period || t.period === period) && (!status || t.status === status)),[teachers,query,period,status]);
+  return <section className="section-card"><div className="toolbar"><div className="search"><Search size={15}/><input aria-label="Buscar docentes" placeholder="Buscar por docente, carrera o asignatura" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="filters"><select className="select" aria-label="Filtrar período" value={period} onChange={(event)=>setPeriod(event.target.value)}><option value="">Todos los períodos</option>{periodNames.map((name)=><option key={name}>{name}</option>)}</select><select className="select" aria-label="Filtrar estado" value={status} onChange={(event)=>setStatus(event.target.value)}><option value="">Todos los estados</option>{[...new Set(teachers.map((teacher)=>teacher.status))].map((name)=><option key={name}>{name}</option>)}</select><button className="primary-button" onClick={onNew}><Plus size={14}/>Registrar docente</button></div></div>{filtered.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Docente</th><th>Carrera / asignatura</th><th>Período</th><th>Hito actual</th><th>Avance</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map(t=><tr key={t.id}><td><div className="teacher"><div className="teacher-avatar">{initials(t.name)}</div><strong>{t.name}</strong></div></td><td>{t.career}<span className="row-meta">{t.subject}</span></td><td>{t.period}</td><td>{t.currentHito}</td><td>{t.progress}%</td><td><span className={`badge ${statusClass(t.status)}`}>{t.status}</span></td><td><button className="row-action" onClick={()=>onAction(`Expediente de ${t.name} abierto`)} aria-label="Abrir"><ChevronRight size={14}/></button></td></tr>)}</tbody></table></div> : <div className="empty-state"><h3>Sin docentes registrados</h3><p>Registre el primer docente para crear su expediente institucional.</p><button className="primary-button" onClick={onNew}><Plus size={14}/>Registrar docente</button></div>}</section>;
 }
 
-function Schedule() { const hitos=[['H1 · Inducción','Ingreso / Semana 0','Conocimientos institucionales y accesos','Completado'],['H2 · Preparación','Una semana antes','SISACAD, EVA, Teams y Telegram','Completado'],['H3 · Inicio docencia','Semana 1–2','Implementación inicial y acompañamiento','En curso'],['H4 · Seguimiento 1','Primer tercio','Evaluación, grabaciones y tutorías','Próximo'],['H5 · Seguimiento 2','Segundo tercio','Autonomía y corrección de brechas','Pendiente'],['H6 · Cierre','Una semana después','Cierre documental y certificación','Pendiente']]; return <section className="section-card"><div className="panel-head"><div><h3>Ruta de acompañamiento</h3><p>Los hitos mantienen la secuencia del proceso CGC-PRO-121</p></div><button className="secondary-button"><CalendarDays size={14}/>Programar fechas</button></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Hito</th><th>Momento</th><th>Propósito</th><th>Fecha programada</th><th>Estado</th></tr></thead><tbody>{hitos.map((h,i)=><tr key={h[0]}><td><strong>{h[0]}</strong></td><td>{h[1]}</td><td>{h[2]}</td><td>{i<3?`${8+i*7}/08/2026`:'Por programar'}</td><td><span className={`badge ${h[3]==='Completado'?'green':h[3]==='En curso'?'blue':'gray'}`}>{h[3]}</span></td></tr>)}</tbody></table></div></section>; }
+function Schedule() { const hitos=[['H1 · Inducción','Ingreso / Semana 0','Conocimientos institucionales y accesos'],['H2 · Preparación','Una semana antes','SISACAD, EVA, Teams y Telegram'],['H3 · Inicio docencia','Semana 1–2','Implementación inicial y acompañamiento'],['H4 · Seguimiento 1','Primer tercio','Evaluación, grabaciones y tutorías'],['H5 · Seguimiento 2','Segundo tercio','Autonomía y corrección de brechas'],['H6 · Cierre','Una semana después','Cierre documental y certificación']]; return <section className="section-card"><div className="panel-head"><div><h3>Ruta de acompañamiento</h3><p>Los hitos mantienen la secuencia del proceso CGC-PRO-121</p></div><button className="secondary-button"><CalendarDays size={14}/>Programar fechas</button></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Hito</th><th>Momento</th><th>Propósito</th><th>Fecha programada</th><th>Estado</th></tr></thead><tbody>{hitos.map((h)=><tr key={h[0]}><td><strong>{h[0]}</strong></td><td>{h[1]}</td><td>{h[2]}</td><td>Por programar</td><td><span className="badge gray">Pendiente</span></td></tr>)}</tbody></table></div></section>; }
 
-function Reviews({role,onAction}:{role:Role;onAction:(msg:string)=>void}) { const rows=role==='approver'?[['Daniela Jácome Silva','Marketing Digital','81,8%','Sin brechas','Listo para revisar'],['Carolina Andrade Mena','Enfermería','78,2%','Sin brechas','Documentación pendiente'],['Luis Montalvo Peña','Contabilidad','76,4%','Sin brechas','Listo para revisar']]:[['H1 · Inducción','7 criterios','3,6 / 4','Superado','Completo'],['H2 · Preparación','20 criterios','3,4 / 4','Superado','Completo'],['H3 · Inicio docencia','14 criterios','2,9 / 4','Con brechas','En revisión'],['H4 · Seguimiento 1','12 criterios','—','Sin evaluar','Pendiente'],['Matriz complementaria','17 criterios','76%','Cumple','Completo'],['Observación de Calidad','21 criterios','82%','Cumple','Completo']]; return <section className="section-card"><div className="panel-head"><div><h3>{role==='approver'?'Bandeja de aprobación':'Evaluación integral'}</h3><p>{role==='approver'?'Expedientes enviados por los coordinadores':'Hitos, matrices y rúbrica de Calidad'}</p></div></div><div className="table-scroll"><table className="data-table"><thead><tr>{(role==='approver'?['Docente','Carrera','Resultado','Control crítico','Estado']:['Componente','Alcance','Resultado','Dictamen','Estado']).map(h=><th key={h}>{h}</th>)}<th></th></tr></thead><tbody>{rows.map((r)=><tr key={r[0]}>{r.map((c,i)=><td key={i}>{i===3?<span className={`badge ${c.includes('brechas')?'red':c==='Superado'||c==='Cumple'?'green':'gray'}`}>{c}</span>:c}</td>)}<td><button className="secondary-button" onClick={()=>onAction(role==='approver'?'Expediente abierto para aprobación':'Evaluación abierta')}>{role==='approver'?'Revisar':'Evaluar'} <ChevronRight size={13}/></button></td></tr>)}</tbody></table></div></section>; }
+function Reviews({role,teachers,onAction}:{role:Role;teachers:Teacher[];onAction:(msg:string)=>void}) { const rows=role==='approver'?teachers.filter((teacher)=>teacher.status==='Pendiente de aprobación'):teachers; return <section className="section-card"><div className="panel-head"><div><h3>{role==='approver'?'Bandeja de aprobación':'Evaluación integral'}</h3><p>{role==='approver'?'Expedientes enviados por los coordinadores':'Expedientes disponibles para evaluación'}</p></div></div>{rows.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Docente</th><th>Carrera</th><th>Avance</th><th>Brechas críticas</th><th>Estado</th><th></th></tr></thead><tbody>{rows.map((teacher)=><tr key={teacher.id}><td><strong>{teacher.name}</strong></td><td>{teacher.career}</td><td>{teacher.progress}%</td><td><span className={`badge ${teacher.criticalGaps ? 'red':'green'}`}>{teacher.criticalGaps}</span></td><td>{teacher.status}</td><td><button className="secondary-button" onClick={()=>onAction(`Expediente de ${teacher.name} abierto`)}>{role==='approver'?'Revisar':'Evaluar'} <ChevronRight size={13}/></button></td></tr>)}</tbody></table></div> : <div className="empty-state"><div className="round-icon"><ClipboardCheck/></div><h3>Sin expedientes pendientes</h3><p>No existen registros disponibles para esta bandeja.</p></div>}</section>; }
 
-function Evidence({role,onAction}:{role:Role;onAction:(msg:string)=>void}) { return <section className="section-card">{role==='approver'?<><div className="panel-head"><div><h3>Certificados habilitados</h3><p>Solo aparecen después de la aprobación institucional</p></div></div><div className="empty-state"><div className="round-icon"><ShieldCheck/></div><h3>Certificación protegida</h3><p>El sistema verifica el resultado integrado, las brechas críticas, los seguimientos y la aprobación antes de emitir el documento.</p><button className="primary-button" onClick={()=>onAction('Listado de certificados actualizado')}>Actualizar listado</button></div></>:<><div className="toolbar"><div><h3>Evidencias del expediente</h3><p className="subtitle">Archivos, fotografías, capturas y enlaces verificables</p></div><button className="primary-button" onClick={()=>onAction('Selector de archivos abierto')}><UploadCloud size={15}/>Subir evidencia</button></div><div className="metric-grid"><Metric icon={FileText} label="Archivos" value="18" note="PDF, Word y Excel"/><Metric icon={UploadCloud} label="Capturas" value="27" note="EVA, Teams y SISACAD" tone="blue"/><Metric icon={BookOpenCheck} label="Enlaces" value="14" note="Recursos verificables" tone="gold"/><Metric icon={Archive} label="Almacenamiento" value="86 MB" note="Uso del expediente"/></div></>}</section>; }
+function Evidence({role,onAction}:{role:Role;onAction:(msg:string)=>void}) { return <section className="section-card"><div className="panel-head"><div><h3>{role==='approver'?'Certificados habilitados':'Evidencias del expediente'}</h3><p>{role==='approver'?'Solo aparecen después de la aprobación institucional':'Archivos, fotografías, capturas y enlaces verificables'}</p></div></div><div className="empty-state"><div className="round-icon">{role==='approver'?<ShieldCheck/>:<UploadCloud/>}</div><h3>{role==='approver'?'Certificación protegida':'Seleccione un expediente'}</h3><p>{role==='approver'?'El sistema solo habilitará certificados que cumplan todas las reglas institucionales.':'Abra un expediente de docente para consultar o cargar evidencias reales en Supabase Storage.'}</p><button className="secondary-button" onClick={()=>onAction('Seleccione un expediente desde Docentes')}>Ir a expedientes</button></div></section>; }
 
 function Documents({role,teachers,onAction}:{role:Role;teachers:Teacher[];onAction:(msg:string)=>void}) { const docs=['Acta oficial de inducción','Registro de acompañamiento 1','Informe de observación de clase','Registro de acompañamiento 2','Informe consolidado de cierre','Certificado de cumplimiento','Expediente completo','Respaldo en Excel']; async function generate(doc:string,index:number){if(index===5&&role!=='approver'){onAction('El certificado requiere aprobación institucional');return;}if(index===7){downloadExcelBackup(teachers);}else{await downloadPdfDocument(doc);}onAction(`${doc}: descarga generada`);} return <section className="section-card"><div className="panel-head"><div><h3>Generación documental</h3><p>Plantillas institucionales alimentadas con la información del expediente</p></div></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Documento</th><th>Responsable</th><th>Formato</th><th>Estado</th><th></th></tr></thead><tbody>{docs.map((doc,i)=><tr key={doc}><td><strong>{doc}</strong></td><td>{i===5?'Coordinación General':'Coordinador de Carrera'}</td><td>{i===7?'Excel':'PDF'}</td><td><span className={`badge ${i<3?'green':i===5&&role!=='approver'?'gold':'gray'}`}>{i<3?'Disponible':i===5&&role!=='approver'?'Requiere aprobación':'Generable'}</span></td><td><button className="ghost-button" onClick={()=>void generate(doc,i)}><FileText size={13}/>Generar</button></td></tr>)}</tbody></table></div></section>; }
 
-function Reports() { return <><div className="metric-grid"><Metric icon={Users} label="Docentes acompañados" value="38" note="Acumulado 2026"/><Metric icon={CheckCircle2} label="Tasa de certificación" value="84%" note="32 de 38 docentes" tone="gold"/><Metric icon={Clock3} label="Duración promedio" value="94 d" note="Desde inducción a cierre" tone="blue"/><Metric icon={Activity} label="Brecha más frecuente" value="EVA" note="Evidencias y calificación" tone="red"/></div><section className="section-card"><div className="panel-head"><div><h3>Desempeño por hito</h3><p>Promedio institucional en escala de 0 a 4</p></div></div>{['H1 · Inducción','H2 · Preparación','H3 · Inicio docencia','H4 · Seguimiento 1','H5 · Seguimiento 2','H6 · Cierre'].map((h,i)=><div className="teacher-row" key={h}><strong>{h}</strong><span className="row-meta">{[3.7,3.5,3.2,3.1,3.4,3.6][i]} / 4</span><div className="progress-cell"><div className="mini-progress"><span style={{width:`${[92,88,80,77,85,90][i]}%`}}/></div></div><span className="badge green">Competente</span></div>)}</section></>; }
+function Reports({teachers}:{teachers:Teacher[]}) { const certified=teachers.filter((teacher)=>teacher.status==='Certificado').length; const average=teachers.length?Math.round(teachers.reduce((total,teacher)=>total+teacher.progress,0)/teachers.length):0; const gaps=teachers.reduce((total,teacher)=>total+teacher.criticalGaps,0); const rate=teachers.length?Math.round((certified/teachers.length)*100):0; return <><div className="metric-grid"><Metric icon={Users} label="Docentes acompañados" value={String(teachers.length)} note="Registros visibles"/><Metric icon={FileCheck2} label="Tasa de certificación" value={`${rate}%`} note={`${certified} certificados`} tone="gold"/><Metric icon={Clock3} label="Avance promedio" value={`${average}%`} note="Todos los expedientes" tone="blue"/><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Total registrado" tone="red"/></div><section className="section-card"><div className="panel-head"><div><h3>Avance por expediente</h3><p>Datos calculados desde Supabase</p></div></div>{teachers.length?teachers.map((teacher)=><div className="teacher-row" key={teacher.id}><strong>{teacher.name}</strong><span className="row-meta">{teacher.currentHito}</span><div className="progress-cell"><div className="mini-progress"><span style={{width:`${teacher.progress}%`}}/></div></div><span className={`badge ${statusClass(teacher.status)}`}>{teacher.progress}%</span></div>):<div className="empty-state"><p>No existen datos para generar indicadores.</p></div>}</section></>; }
 
-function UsersPanel({onAction}:{onAction:(msg:string)=>void}) { const users=[['Jefferson Villarreal','Coordinador','Titulación / carreras asignadas','Activo'],['María Alejandra Hernández','Aprobadora','Coordinación General','Activo'],['Juan Carlos Pazmiño','Coordinador','Software y Redes','Activo'],['Administrador SIACD','Administrador','Acceso institucional','Activo']]; return <section className="section-card"><div className="toolbar"><div><h3>Usuarios del sistema</h3><p className="subtitle">Cuentas, roles y alcance de acceso</p></div><button className="primary-button" onClick={()=>onAction('Formulario para crear usuario abierto')}><Plus size={14}/>Crear usuario</button></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Usuario</th><th>Rol</th><th>Asignación</th><th>Estado</th><th></th></tr></thead><tbody>{users.map(u=><tr key={u[0]}><td><strong>{u[0]}</strong></td><td>{u[1]}</td><td>{u[2]}</td><td><span className="badge green">{u[3]}</span></td><td><button className="row-action" aria-label="Editar usuario"><ChevronRight size={14}/></button></td></tr>)}</tbody></table></div></section>; }
+function UsersPanel({users,onAction}:{users:SystemProfile[];onAction:(msg:string)=>void}) { const roleLabel:Record<Role,string>={coordinator:'Coordinador',approver:'Aprobador',admin:'Administrador'}; return <section className="section-card"><div className="toolbar"><div><h3>Usuarios del sistema</h3><p className="subtitle">Perfiles recuperados desde Supabase</p></div><button className="primary-button" onClick={()=>onAction('Cree la cuenta desde Supabase Auth y asigne su perfil institucional')}><Plus size={14}/>Crear usuario</button></div>{users.length?<div className="table-scroll"><table className="data-table"><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th></tr></thead><tbody>{users.map((user)=><tr key={user.id}><td><strong>{user.full_name}</strong></td><td>{roleLabel[user.role]}</td><td><span className={`badge ${user.active?'green':'gray'}`}>{user.active?'Activo':'Inactivo'}</span></td></tr>)}</tbody></table></div>:<div className="empty-state"><p>No existen perfiles visibles para esta cuenta.</p></div>}</section>; }
 
-function SettingsPanel({onAction}:{onAction:(msg:string)=>void}) { return <section className="section-card"><div className="form-grid"><div className="field"><label>Período académico activo</label><select><option>Mayo – Noviembre 2026</option><option>Febrero – Agosto 2026</option></select></div><div className="field"><label>Resultado mínimo de certificación</label><input value="75%" readOnly/></div><div className="field"><label>Peso operativo SIACD</label><input value="60%" readOnly/></div><div className="field"><label>Peso Observación de Calidad</label><input value="25%" readOnly/></div><div className="field"><label>Peso Matriz complementaria</label><input value="15%" readOnly/></div><div className="field"><label>Seguimientos mínimos</label><input value="4" readOnly/></div><div className="field full"><label>Regla de seguridad</label><textarea value="Ningún expediente puede certificarse con competencias críticas por debajo de 3, información incompleta o sin aprobación de Coordinación General." readOnly/></div><div className="form-actions"><button className="primary-button" onClick={()=>onAction('Configuración guardada')}>Guardar configuración</button></div></div></section>; }
+function SettingsPanel({periods,onAction}:{periods:CatalogOption[];onAction:(msg:string)=>void}) { return <section className="section-card"><div className="form-grid"><div className="field"><label>Período académico activo</label><select>{periods.length?periods.map((period)=><option key={period.id} value={period.id}>{period.name}</option>):<option>Sin períodos configurados</option>}</select></div><div className="field"><label>Resultado mínimo de certificación</label><input value="75%" readOnly/></div><div className="field"><label>Peso operativo SIACD</label><input value="60%" readOnly/></div><div className="field"><label>Peso Observación de Calidad</label><input value="25%" readOnly/></div><div className="field"><label>Peso Matriz complementaria</label><input value="15%" readOnly/></div><div className="field"><label>Seguimientos mínimos</label><input value="4" readOnly/></div><div className="field full"><label>Regla de seguridad</label><textarea value="Ningún expediente puede certificarse con competencias críticas por debajo de 3, información incompleta o sin aprobación de Coordinación General." readOnly/></div><div className="form-actions"><button className="primary-button" onClick={()=>onAction('Configuración guardada')}>Guardar configuración</button></div></div></section>; }
 
-function TeacherModal({onClose,onSave}:{onClose:()=>void;onSave:(teacher:Teacher)=>void}) { function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);onSave({id:crypto.randomUUID(),name:String(f.get('name')),career:String(f.get('career')),subject:String(f.get('subject')),period:String(f.get('period')),progress:0,status:'En acompañamiento',currentHito:'H1 · Inducción'});} return <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="teacher-title"><div className="modal-head"><h2 id="teacher-title">Registrar docente nuevo</h2><button className="icon-button" aria-label="Cerrar" onClick={onClose}><X size={17}/></button></div><form className="modal-body form-grid" onSubmit={submit}><div className="field full"><label>Nombres y apellidos</label><input name="name" required placeholder="Nombre completo del docente"/></div><div className="field"><label>Carrera</label><input name="career" required placeholder="Ej. Enfermería"/></div><div className="field"><label>Asignatura(s)</label><input name="subject" required placeholder="Ej. Fundamentos de Enfermería"/></div><div className="field"><label>Modalidad</label><select name="modality"><option>Presencial</option><option>Híbrida</option><option>Online</option></select></div><div className="field"><label>Período académico</label><select name="period"><option>Mayo – Noviembre 2026</option><option>Febrero – Agosto 2026</option></select></div><div className="field"><label>Fecha de ingreso</label><input type="date" name="startDate" required/></div><div className="field"><label>Jornada / horario</label><input name="schedule" placeholder="Ej. Nocturna · 19:00 a 22:00"/></div><div className="field"><label>Correo institucional</label><input name="email" type="email" placeholder="docente@institucion.edu.ec"/></div><div className="field"><label>Código Teams</label><input name="teams" placeholder="Código del equipo"/></div><div className="field full"><label>Enlace de Telegram</label><input name="telegram" type="url" placeholder="https://t.me/..."/></div><div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button"><Plus size={14}/>Crear expediente</button></div></form></div></div>; }
+function TeacherModal({careers,periods,onClose,onSave}:{careers:CatalogOption[];periods:CatalogOption[];onClose:()=>void;onSave:(teacher:NewTeacherInput)=>void}) { function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);void onSave({name:String(f.get('name')),careerId:String(f.get('careerId')),periodId:String(f.get('periodId')),subject:String(f.get('subject')),modality:String(f.get('modality')),startDate:String(f.get('startDate')),schedule:String(f.get('schedule')??''),email:String(f.get('email')??''),teams:String(f.get('teams')??''),telegram:String(f.get('telegram')??'')});} const ready=careers.length>0&&periods.length>0; return <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="teacher-title"><div className="modal-head"><h2 id="teacher-title">Registrar docente nuevo</h2><button className="icon-button" aria-label="Cerrar" onClick={onClose}><X size={17}/></button></div><form className="modal-body form-grid" onSubmit={submit}>{!ready&&<div className="error-note field full">El administrador debe configurar al menos una carrera y un período académico en Supabase.</div>}<div className="field full"><label>Nombres y apellidos</label><input name="name" required placeholder="Nombre completo del docente"/></div><div className="field"><label>Carrera</label><select name="careerId" required>{careers.map((career)=><option key={career.id} value={career.id}>{career.name}</option>)}</select></div><div className="field"><label>Asignatura(s)</label><input name="subject" required placeholder="Ej. Fundamentos de Enfermería"/></div><div className="field"><label>Modalidad</label><select name="modality"><option>Presencial</option><option>Híbrida</option><option>Online</option></select></div><div className="field"><label>Período académico</label><select name="periodId" required>{periods.map((period)=><option key={period.id} value={period.id}>{period.name}</option>)}</select></div><div className="field"><label>Fecha de ingreso</label><input type="date" name="startDate" required/></div><div className="field"><label>Jornada / horario</label><input name="schedule" placeholder="Ej. Nocturna · 19:00 a 22:00"/></div><div className="field"><label>Correo institucional</label><input name="email" type="email" placeholder="docente@institucion.edu.ec"/></div><div className="field"><label>Código Teams</label><input name="teams" placeholder="Código del equipo"/></div><div className="field full"><label>Enlace de Telegram</label><input name="telegram" type="url" placeholder="https://t.me/..."/></div><div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button" disabled={!ready}><Plus size={14}/>Guardar en Supabase</button></div></form></div></div>; }
