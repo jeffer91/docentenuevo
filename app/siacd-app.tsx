@@ -60,7 +60,7 @@ type NewTeacherInput = {
   subject: string;
   modality: string;
   startDate: string;
-  schedule: string;
+  schedules: { startTime: string; endTime: string }[];
   email: string;
   teams: string;
   telegram: string;
@@ -277,7 +277,7 @@ export default function SiacdApp() {
         coordinator_id: currentUserId,
         subject_names: input.subject,
         modality: input.modality,
-        schedule_text: input.schedule || null,
+        schedule_text: input.schedules.map((schedule) => `${schedule.startTime} a ${schedule.endTime}`).join(" · "),
         activities_start_on: input.startDate,
         teams_code: input.teams || null,
         telegram_url: input.telegram || null,
@@ -290,6 +290,23 @@ export default function SiacdApp() {
       setToast(`No se pudo crear el expediente: ${expedientError?.message ?? "error de base de datos"}`);
       return;
     }
+
+    const { error: schedulesError } = await supabase
+      .from("expedient_schedules")
+      .insert(input.schedules.map((schedule, index) => ({
+        expedient_id: expedient.id,
+        sequence: index + 1,
+        start_time: schedule.startTime,
+        end_time: schedule.endTime,
+      })));
+
+    if (schedulesError) {
+      await supabase.from("expedients").delete().eq("id", expedient.id);
+      await supabase.from("teachers").delete().eq("id", teacher.id);
+      setToast(`No se pudieron guardar las jornadas: ${schedulesError.message}`);
+      return;
+    }
+
     setTeachers((current) => [mapExpedient(expedient as Record<string, unknown>), ...current]);
     setShowTeacherModal(false);
     setToast("Docente y expediente guardados en Supabase");
@@ -383,4 +400,180 @@ function UsersPanel({users,onAction}:{users:SystemProfile[];onAction:(msg:string
 
 function SettingsPanel({periods,onAction}:{periods:CatalogOption[];onAction:(msg:string)=>void}) { return <section className="section-card"><div className="form-grid"><div className="field"><label>Período académico activo</label><select>{periods.length?periods.map((period)=><option key={period.id} value={period.id}>{period.name}</option>):<option>Sin períodos configurados</option>}</select></div><div className="field"><label>Resultado mínimo de certificación</label><input value="75%" readOnly/></div><div className="field"><label>Peso operativo SIACD</label><input value="60%" readOnly/></div><div className="field"><label>Peso Observación de Calidad</label><input value="25%" readOnly/></div><div className="field"><label>Peso Matriz complementaria</label><input value="15%" readOnly/></div><div className="field"><label>Seguimientos mínimos</label><input value="4" readOnly/></div><div className="field full"><label>Regla de seguridad</label><textarea value="Ningún expediente puede certificarse con competencias críticas por debajo de 3, información incompleta o sin aprobación de Coordinación General." readOnly/></div><div className="form-actions"><button className="primary-button" onClick={()=>onAction('Configuración guardada')}>Guardar configuración</button></div></div></section>; }
 
-function TeacherModal({careers,periods,onClose,onSave}:{careers:CatalogOption[];periods:CatalogOption[];onClose:()=>void;onSave:(teacher:NewTeacherInput)=>void}) { function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);void onSave({name:String(f.get('name')),careerId:String(f.get('careerId')),periodId:String(f.get('periodId')),subject:String(f.get('subject')),modality:String(f.get('modality')),startDate:String(f.get('startDate')),schedule:String(f.get('schedule')??''),email:String(f.get('email')??''),teams:String(f.get('teams')??''),telegram:String(f.get('telegram')??'')});} const ready=careers.length>0&&periods.length>0; return <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="teacher-title"><div className="modal-head"><h2 id="teacher-title">Registrar docente nuevo</h2><button className="icon-button" aria-label="Cerrar" onClick={onClose}><X size={17}/></button></div><form className="modal-body form-grid" onSubmit={submit}>{!ready&&<div className="error-note field full">El administrador debe configurar al menos una carrera y un período académico en Supabase.</div>}<div className="field full"><label>Nombres y apellidos</label><input name="name" required placeholder="Nombre completo del docente"/></div><div className="field"><label>Carrera</label><select name="careerId" required>{careers.map((career)=><option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""}</option>)}</select></div><div className="field"><label>Asignatura(s)</label><input name="subject" required placeholder="Ej. Fundamentos de Enfermería"/></div><div className="field"><label>Modalidad</label><select name="modality"><option>Presencial</option><option>Híbrida</option><option>Online</option></select></div><div className="field"><label>Período académico</label><select name="periodId" required>{periods.map((period)=><option key={period.id} value={period.id}>{period.name}</option>)}</select></div><div className="field"><label>Fecha de ingreso</label><input type="date" name="startDate" required/></div><div className="field"><label>Jornada / horario</label><input name="schedule" placeholder="Ej. Nocturna · 19:00 a 22:00"/></div><div className="field"><label>Correo institucional</label><input name="email" type="email" placeholder="docente@institucion.edu.ec"/></div><div className="field"><label>Código Teams</label><input name="teams" placeholder="Código del equipo"/></div><div className="field full"><label>Enlace de Telegram</label><input name="telegram" type="url" placeholder="https://t.me/..."/></div><div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button" disabled={!ready}><Plus size={14}/>Guardar en Supabase</button></div></form></div></div>; }
+function TeacherModal({
+  careers,
+  periods,
+  onClose,
+  onSave,
+}: {
+  careers: CatalogOption[];
+  periods: CatalogOption[];
+  onClose: () => void;
+  onSave: (teacher: NewTeacherInput) => void;
+}) {
+  const [schedules, setSchedules] = useState([{ startTime: "", endTime: "" }]);
+
+  function updateSchedule(index: number, field: "startTime" | "endTime", value: string) {
+    setSchedules((current) => current.map((schedule, position) =>
+      position === index ? { ...schedule, [field]: value } : schedule
+    ));
+  }
+
+  function addSchedule() {
+    setSchedules((current) => [...current, { startTime: "", endTime: "" }]);
+  }
+
+  function removeSchedule(index: number) {
+    setSchedules((current) => current.length === 1
+      ? current
+      : current.filter((_, position) => position !== index)
+    );
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const invalidSchedule = schedules.some((schedule) =>
+      !schedule.startTime || !schedule.endTime || schedule.endTime <= schedule.startTime
+    );
+    if (invalidSchedule) {
+      window.alert("Cada jornada debe tener una hora final posterior a la hora inicial.");
+      return;
+    }
+
+    const form = new FormData(event.currentTarget);
+    void onSave({
+      name: String(form.get("name")),
+      careerId: String(form.get("careerId")),
+      periodId: String(form.get("periodId")),
+      subject: String(form.get("subject")),
+      modality: String(form.get("modality")),
+      startDate: String(form.get("startDate")),
+      schedules,
+      email: String(form.get("email") ?? ""),
+      teams: String(form.get("teams") ?? ""),
+      telegram: String(form.get("telegram") ?? ""),
+    });
+  }
+
+  const ready = careers.length > 0 && periods.length > 0;
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="teacher-title">
+        <div className="modal-head">
+          <h2 id="teacher-title">Registrar docente nuevo</h2>
+          <button className="icon-button" aria-label="Cerrar" onClick={onClose}><X size={17} /></button>
+        </div>
+        <form className="modal-body form-grid" onSubmit={submit}>
+          {!ready && <div className="error-note field full">El administrador debe configurar al menos una carrera y un período académico en Supabase.</div>}
+
+          <div className="field full">
+            <label>Nombres y apellidos</label>
+            <input name="name" required placeholder="Nombre completo del docente" />
+          </div>
+
+          <div className="field">
+            <label>Carrera</label>
+            <select name="careerId" required>
+              {careers.map((career) => (
+                <option key={career.id} value={career.id}>
+                  {career.name}{career.program ? ` — ${career.program}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label>Asignatura(s)</label>
+            <input name="subject" required placeholder="Ej. Fundamentos de Enfermería" />
+          </div>
+
+          <div className="field">
+            <label>Modalidad</label>
+            <select name="modality">
+              <option>Presencial</option>
+              <option>Híbrida</option>
+              <option>Online</option>
+            </select>
+          </div>
+
+          <div className="field">
+            <label>Período académico</label>
+            <select name="periodId" required>
+              {periods.map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}
+            </select>
+          </div>
+
+          <div className="field full">
+            <label>Fecha de ingreso</label>
+            <input type="date" name="startDate" required />
+          </div>
+
+          <div className="field full">
+            <label>Jornadas / horarios</label>
+            <div className="schedule-editor">
+              {schedules.map((schedule, index) => (
+                <div className="schedule-range" key={index}>
+                  <strong>Jornada {index + 1}</strong>
+                  <div className="field">
+                    <label>Desde</label>
+                    <input
+                      type="time"
+                      required
+                      value={schedule.startTime}
+                      onChange={(event) => updateSchedule(index, "startTime", event.target.value)}
+                    />
+                  </div>
+                  <div className="schedule-separator">a</div>
+                  <div className="field">
+                    <label>Hasta</label>
+                    <input
+                      type="time"
+                      required
+                      value={schedule.endTime}
+                      onChange={(event) => updateSchedule(index, "endTime", event.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-button schedule-remove"
+                    aria-label={`Eliminar jornada ${index + 1}`}
+                    disabled={schedules.length === 1}
+                    onClick={() => removeSchedule(index)}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" className="secondary-button schedule-add" onClick={addSchedule}>
+                <Plus size={14} /> Agregar otra jornada
+              </button>
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Correo institucional</label>
+            <input name="email" type="email" placeholder="docente@institucion.edu.ec" />
+          </div>
+
+          <div className="field">
+            <label>Código Teams</label>
+            <input name="teams" placeholder="Código del equipo" />
+          </div>
+
+          <div className="field full">
+            <label>Enlace de Telegram</label>
+            <input name="telegram" type="url" placeholder="https://t.me/..." />
+          </div>
+
+          <div className="form-actions">
+            <button type="button" className="ghost-button" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="primary-button" disabled={!ready}>
+              <Plus size={14} /> Guardar en Supabase
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
