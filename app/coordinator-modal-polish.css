@@ -1,0 +1,178 @@
+/* Mejora visual exclusiva del modal de Coordinadores.
+   Se aplica únicamente al modal que contiene selección de carreras. */
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) {
+  width: min(1040px, 96vw);
+  max-height: 92vh;
+  overflow: hidden;
+  border: 1px solid rgba(18, 59, 103, 0.14);
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: rgba(255, 253, 248, 0.98);
+  backdrop-filter: blur(10px);
+  padding: 22px 26px;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .modal-head h2 {
+  font-size: 26px;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .modal-body {
+  max-height: calc(92vh - 78px);
+  overflow: auto;
+  padding: 24px 26px 18px;
+  background: linear-gradient(180deg, #fffdf8 0%, #f8fafc 100%);
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .form-grid {
+  gap: 20px;
+}
+
+/* Nombre del coordinador */
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full:first-child {
+  padding: 16px;
+  border: 1px solid #dbe4ee;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full:first-child > label {
+  margin-bottom: 8px;
+  color: #123b67;
+  font-size: 10px;
+  letter-spacing: .03em;
+}
+
+/* Bloque de carreras */
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full:has(> div[style*="grid"]) {
+  padding: 18px;
+  border: 1px solid #dbe4ee;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full:has(> div[style*="grid"]) > label {
+  margin-bottom: 12px;
+  color: #071c34;
+  font-size: 11px;
+  letter-spacing: .03em;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 11px !important;
+  max-height: 430px;
+  overflow-y: auto;
+  padding: 3px 8px 3px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #a9bbcf transparent;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] > label {
+  display: grid !important;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start !important;
+  gap: 10px !important;
+  min-height: 76px;
+  margin: 0;
+  padding: 13px 13px 12px;
+  border: 1px solid #dde5ed;
+  border-radius: 14px;
+  background: #fbfcfd;
+  color: #31465f;
+  font-size: 10px !important;
+  font-weight: 700;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] > label:hover {
+  border-color: #9bb2c9;
+  background: #f5f8fb;
+  box-shadow: 0 7px 20px rgba(7, 28, 52, .07);
+  transform: translateY(-1px);
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] > label:has(input:checked) {
+  border-color: #3c78ad;
+  background: linear-gradient(145deg, #edf5fb, #f7fbff);
+  color: #0b355d;
+  box-shadow: inset 0 0 0 1px rgba(60, 120, 173, .12), 0 7px 18px rgba(18, 59, 103, .08);
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  accent-color: #123b67;
+  cursor: pointer;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] > label span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/* Estado activo separado de las carreras */
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full:has(> label > input[type="checkbox"]) {
+  padding: 14px 16px;
+  border: 1px solid #cddceb;
+  border-radius: 14px;
+  background: #eef5fb;
+}
+
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full:has(> label > input[type="checkbox"]) > label {
+  margin: 0;
+  color: #123b67;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+/* Acciones siempre visibles al final */
+.modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .form-actions {
+  position: sticky;
+  bottom: -18px;
+  z-index: 4;
+  margin: 0 -26px -18px;
+  padding: 15px 26px 18px;
+  border-top: 1px solid #dbe2ea;
+  background: rgba(255, 253, 248, .97);
+  backdrop-filter: blur(10px);
+}
+
+@media (max-width: 900px) {
+  .modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 620px) {
+  .modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) {
+    width: 100%;
+    max-height: 96vh;
+  }
+
+  .modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .modal-body {
+    padding: 18px;
+  }
+
+  .modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] {
+    grid-template-columns: 1fr !important;
+    max-height: 48vh;
+  }
+
+  .modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .field.full > div[style*="grid"] > label {
+    min-height: 0;
+  }
+
+  .modal:has(.field.full > div[style*="grid"] input[type="checkbox"]) .form-actions {
+    margin: 0 -18px -18px;
+    padding: 14px 18px 18px;
+  }
+}
