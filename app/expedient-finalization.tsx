@@ -6,12 +6,14 @@ import {
   FileCheck2,
   FileText,
   Link2,
+  Plus,
   Save,
   ShieldCheck,
   Trash2,
   UploadCloud,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import type { jsPDF as JsPDF } from "jspdf";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
 import styles from "./siacd-block3.module.css";
@@ -318,9 +320,9 @@ export default function ExpedientFinalization({
     const eHitos = new Set(nextEvidences.map((item) => item.hito_id).filter((id) => id && /^H[1-6]$/.test(id))).size;
     const integrated = operationalPercent / 100 * 0.60 + cScore * 0.15 + qScore * 0.25;
     await supabase.from("expedients").update({
-      complementary_score: cScore || null,
-      quality_score: qScore || null,
-      final_score: integrated || null,
+      complementary_score: cValues.length ? cScore : null,
+      quality_score: Object.values(nextQuality).some((item) => item.score !== null && item.score !== undefined) ? qScore : null,
+      final_score: cValues.length || Object.values(nextQuality).some((item) => item.score !== null && item.score !== undefined) ? integrated : null,
       followups_count: followups.length,
       evidence_hitos_count: eHitos,
       updated_at: new Date().toISOString(),
@@ -381,7 +383,8 @@ export default function ExpedientFinalization({
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
     setUploading(true);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const file = form.get("file");
     const url = String(form.get("external_url") ?? "").trim();
     let storagePath: string | null = null;
@@ -423,7 +426,7 @@ export default function ExpedientFinalization({
       return;
     }
     setUploading(false);
-    (event.currentTarget as HTMLFormElement).reset();
+    formElement.reset();
     setMessage("Evidencia registrada");
     await load();
     await onChanged();
@@ -464,7 +467,7 @@ export default function ExpedientFinalization({
     setSavingId("");
   }
 
-  function addPdfHeader(pdf: any, title: string) {
+  function addPdfHeader(pdf: JsPDF, title: string) {
     pdf.setFillColor(7, 28, 52);
     pdf.rect(0, 0, 210, 30, "F");
     pdf.setTextColor(255, 255, 255);
