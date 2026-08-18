@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./globals.css";
-import SiacdApp from "./siacd-app";
+import SiacdApp from "./siacd-app-v2";
 
 const container = document.getElementById("root");
 
