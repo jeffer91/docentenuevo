@@ -15,13 +15,12 @@ $env:VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc
 Write-Host "Supabase configurado automáticamente." -ForegroundColor Green
 
 Write-Host "1/4 Sincronizando dependencias..." -ForegroundColor Cyan
-# npm install repara automáticamente package-lock.json cuando quedó desincronizado
-# por una instalación local previa (por ejemplo, la CLI de Supabase).
 npm install --no-audit --no-fund
 if ($LASTEXITCODE -ne 0) { throw "Falló la instalación de dependencias." }
 
 Write-Host "2/4 Validando el código..." -ForegroundColor Cyan
-npm run lint
+# Ejecutar ESLint directamente para que funcione en Windows sin Bash.
+npx eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern pages-dist
 if ($LASTEXITCODE -ne 0) { throw "Falló la validación del código." }
 
 Write-Host "3/4 Generando la aplicación de producción..." -ForegroundColor Cyan
