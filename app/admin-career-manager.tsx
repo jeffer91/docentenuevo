@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ArrowLeftRight, Search, UserCog, X } from "lucide-react";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 
@@ -59,9 +59,11 @@ export default function AdminCareerManager() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
+  function openManager() {
+    setOpen(true);
+    setMessage("");
+    void load();
+  }
 
   const assignedIds = useMemo(
     () => new Set(assignments.filter((item) => item.staff_id === selectedStaffId).map((item) => item.career_id)),
@@ -114,7 +116,7 @@ export default function AdminCareerManager() {
 
   return (
     <>
-      <button className="career-manager-launcher" onClick={() => setOpen(true)}>
+      <button className="career-manager-launcher" onClick={openManager}>
         <ArrowLeftRight size={16} /> Gestionar carreras
       </button>
       {open && (
