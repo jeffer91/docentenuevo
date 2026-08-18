@@ -1,4 +1,4 @@
-import SiacdApp from "./siacd-app-v2";
+import SiacdApp from "./siacd-app-v3";
 
 export default function Home() {
   return <SiacdApp />;
