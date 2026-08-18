@@ -12,9 +12,8 @@ create table if not exists public.siacd_staff (
   updated_at timestamptz not null default now()
 );
 
-create unique index if not exists siacd_staff_coordinator_name_unique
-  on public.siacd_staff (lower(full_name))
-  where role = 'coordinator';
+create index if not exists siacd_staff_role_name_idx
+  on public.siacd_staff (role, lower(full_name));
 
 create table if not exists public.siacd_staff_careers (
   staff_id uuid not null references public.siacd_staff(id) on delete cascade,
