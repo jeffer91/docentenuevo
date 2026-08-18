@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
+import "./coordinator-modal-polish.css";
 
 const manrope = Manrope({
   variable: "--font-manrope",
