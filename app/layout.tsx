@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Manrope, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import "./coordinator-modal-polish.css";
+import "./admin-career-manager.css";
+import AdminCareerManager from "./admin-career-manager";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -37,6 +39,7 @@ export default function RootLayout({
         className={`${manrope.variable} ${sourceSerif.variable} antialiased`}
       >
         {children}
+        <AdminCareerManager />
       </body>
     </html>
   );
