@@ -5,6 +5,7 @@ export type DirectoryTeacher = {
   cedula: string;
   nombresCompletos: string;
   carreras: string[];
+  roles: string[];
   actualizadoEn?: string;
 };
 
@@ -13,6 +14,8 @@ type FirebaseTeacherRecord = {
   nombresCompletos?: unknown;
   carrera?: unknown;
   carreras?: unknown;
+  rol?: unknown;
+  roles?: unknown;
   actualizadoEn?: unknown;
 };
 
@@ -62,6 +65,11 @@ function careerKey(value: string): string {
   return normalized || "carrera";
 }
 
+function roleKey(value: string): string {
+  const normalized = normalizeDirectoryLabel(value).replace(/\s+/g, "_");
+  return normalized || "rol";
+}
+
 function parseCareers(record: FirebaseTeacherRecord): string[] {
   const values: string[] = [];
   if (typeof record.carrera === "string" && record.carrera.trim()) values.push(record.carrera.trim());
@@ -77,6 +85,22 @@ function parseCareers(record: FirebaseTeacherRecord): string[] {
   return [...new Map(values.map((item) => [normalizeDirectoryLabel(item), item])).values()];
 }
 
+function parseRoles(record: FirebaseTeacherRecord): string[] {
+  const values: string[] = [];
+  if (typeof record.rol === "string" && record.rol.trim()) values.push(record.rol.trim());
+
+  if (Array.isArray(record.roles)) {
+    for (const item of record.roles) if (typeof item === "string" && item.trim()) values.push(item.trim());
+  } else if (record.roles && typeof record.roles === "object") {
+    for (const [key, value] of Object.entries(record.roles as Record<string, unknown>)) {
+      if (value === true) values.push(key);
+      else if (typeof value === "string" && value.trim()) values.push(value.trim());
+    }
+  }
+
+  return mergeDirectoryRoles(values);
+}
+
 export function mergeDirectoryCareers(...groups: string[][]): string[] {
   const merged = new Map<string, string>();
   for (const group of groups) {
@@ -84,6 +108,19 @@ export function mergeDirectoryCareers(...groups: string[][]): string[] {
       const trimmed = value.trim();
       if (!trimmed) continue;
       merged.set(normalizeDirectoryLabel(trimmed), trimmed);
+    }
+  }
+  return [...merged.values()].sort((a, b) => a.localeCompare(b, "es"));
+}
+
+export function mergeDirectoryRoles(...groups: string[][]): string[] {
+  const merged = new Map<string, string>();
+  for (const group of groups) {
+    for (const value of group) {
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      const normalized = normalizeDirectoryLabel(trimmed);
+      merged.set(normalized, normalized || trimmed);
     }
   }
   return [...merged.values()].sort((a, b) => a.localeCompare(b, "es"));
@@ -101,17 +138,28 @@ export async function readDirectoryTeacher(value: string): Promise<DirectoryTeac
     cedula,
     nombresCompletos: typeof raw.nombresCompletos === "string" ? raw.nombresCompletos.trim() : "",
     carreras: parseCareers(raw),
+    roles: parseRoles(raw),
     actualizadoEn: typeof raw.actualizadoEn === "string" ? raw.actualizadoEn : undefined,
   };
 }
 
-export async function writeDirectoryTeacher(input: DirectoryTeacher): Promise<void> {
+export async function writeDirectoryTeacher(input: Omit<DirectoryTeacher, "roles"> & { roles?: string[] }): Promise<void> {
   const cedula = normalizeCedula(input.cedula);
   if (!cedula) throw new Error("Cédula inválida");
 
+  let existingRoles: string[] = [];
+  try {
+    const existing = await readDirectoryTeacher(cedula);
+    existingRoles = existing?.roles ?? [];
+  } catch {
+    existingRoles = [];
+  }
+
+  const roles = mergeDirectoryRoles(existingRoles, input.roles ?? [], ["docente"]);
   const careersObject = Object.fromEntries(
     mergeDirectoryCareers(input.carreras).map((career) => [careerKey(career), career]),
   );
+  const rolesObject = Object.fromEntries(roles.map((role) => [roleKey(role), true]));
 
   const response = await fetch(`${FIREBASE_DATABASE_URL}/${DIRECTORY_NODE}/${cedula}.json`, {
     method: "PATCH",
@@ -121,6 +169,7 @@ export async function writeDirectoryTeacher(input: DirectoryTeacher): Promise<vo
       nombresCompletos: input.nombresCompletos.trim(),
       carreras: careersObject,
       carrera: null,
+      roles: rolesObject,
       actualizadoEn: input.actualizadoEn ?? new Date().toISOString(),
     }),
   });
