@@ -5,6 +5,7 @@ import "./admin-career-manager.css";
 import "./teacher-directory.css";
 import AdminShell from "./admin-shell";
 import SiacdApp from "./siacd-app-v3";
+import TeacherPortal from "./teacher-portal";
 
 const container = document.getElementById("root");
 
@@ -15,7 +16,9 @@ const app = pathname.includes("/administrador")
   ? <AdminShell />
   : pathname.includes("/coordinador")
     ? <SiacdApp forcedAccess="coordinator" />
-    : <SiacdApp />;
+    : pathname.includes("/docente")
+      ? <TeacherPortal />
+      : <SiacdApp />;
 
 createRoot(container).render(
   <React.StrictMode>
