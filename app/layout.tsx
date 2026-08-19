@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Manrope, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import "./admin-career-manager.css";
+import "./teacher-directory.css";
 
 const manrope = Manrope({
   variable: "--font-manrope",
