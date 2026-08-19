@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./globals.css";
 import "./admin-career-manager.css";
+import "./teacher-directory.css";
 import AdminShell from "./admin-shell";
 import SiacdApp from "./siacd-app-v3";
 
