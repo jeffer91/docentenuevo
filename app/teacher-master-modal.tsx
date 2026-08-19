@@ -53,7 +53,7 @@ export default function TeacherMasterModal({ teacher, careers, onClose, onChange
         const record = await readDirectoryTeacher(teacher.nationalId);
         if (active) setDirectoryCareers(record?.carreras ?? []);
       } catch {
-        if (active) setMessage("No se pudo leer Firebase. Puede editar los datos de Supabase y volver a sincronizar al guardar.");
+        if (active) setMessage("No se pudo leer Firebase. Puede editar los datos y volver a sincronizar al guardar.");
       } finally {
         if (active) setLoading(false);
       }
@@ -84,34 +84,48 @@ export default function TeacherMasterModal({ teacher, careers, onClose, onChange
     setSaving(true);
     setMessage("");
     const now = new Date().toISOString();
-    try {
-      const supabase = getSupabaseBrowserClient();
-      if (!supabase) throw new Error("Supabase no está configurado");
-      const { error } = await supabase
-        .from("teachers")
-        .update({
-          national_id: cedula,
-          full_name: name.trim(),
-          institutional_email: email.trim() || null,
-          started_institution_on: entryDate || null,
-          updated_at: now,
-        })
-        .eq("id", teacher.teacherId);
-      if (error) throw error;
 
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setSaving(false);
+      setMessage("Supabase no está configurado.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("teachers")
+      .update({
+        national_id: cedula,
+        full_name: name.trim(),
+        institutional_email: email.trim() || null,
+        started_institution_on: entryDate || null,
+        updated_at: now,
+      })
+      .eq("id", teacher.teacherId);
+
+    if (error) {
+      setSaving(false);
+      setMessage(`No se pudieron guardar los datos en SIACD: ${error.message}`);
+      return;
+    }
+
+    try {
       await writeDirectoryTeacher({
         cedula,
         nombresCompletos: name.trim(),
         carreras: directoryCareers,
         actualizadoEn: now,
       });
+    } catch (firebaseError) {
       await onChanged();
-      onClose();
-    } catch (error) {
-      setMessage(`No se pudieron guardar los datos: ${error instanceof Error ? error.message : "error desconocido"}`);
-    } finally {
       setSaving(false);
+      setMessage(`Los datos de SIACD se actualizaron, pero Firebase no pudo sincronizarse: ${firebaseError instanceof Error ? firebaseError.message : "error desconocido"}`);
+      return;
     }
+
+    await onChanged();
+    setSaving(false);
+    onClose();
   }
 
   return (
