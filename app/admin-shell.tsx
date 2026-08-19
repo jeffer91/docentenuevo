@@ -2,7 +2,6 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useState } from "react";
-import AdminCareerManager from "./admin-career-manager";
 import SiacdApp from "./siacd-app-v3";
 
 const ADMIN_PIN_HASH = "e6955a2c59dc90833986fe0894cf6718dddaa7816bb51bc955cdd3eb4470e554";
@@ -41,14 +40,7 @@ export default function AdminShell() {
     setPin("");
   }
 
-  if (authorized) {
-    return (
-      <>
-        <SiacdApp forcedAccess="admin" />
-        <AdminCareerManager />
-      </>
-    );
-  }
+  if (authorized) return <SiacdApp forcedAccess="admin" />;
 
   return (
     <div className="login-page">
