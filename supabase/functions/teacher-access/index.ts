@@ -4,6 +4,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("SIACD_EMAIL_FROM") ?? "SIACD <no-reply@itsqmet.edu.ec>";
+const FIREBASE_DATABASE_URL = "https://repaso-fire-d8ceb-default-rtdb.firebaseio.com";
 
 const allowedOrigins = new Set([
   "https://docentenuevo.pages.dev",
@@ -28,6 +29,13 @@ function json(req: Request, body: Record<string, unknown>, status = 200) {
   });
 }
 
+function normalizeCedula(value: unknown) {
+  if (typeof value !== "string") return "";
+  let digits = value.replace(/\D/g, "");
+  if (digits.length === 9) digits = `0${digits}`;
+  return /^\d{10}$/.test(digits) ? digits : "";
+}
+
 function normalizeEmail(value: unknown) {
   if (typeof value !== "string") return "";
   return value.trim().toLowerCase();
@@ -35,6 +43,17 @@ function normalizeEmail(value: unknown) {
 
 function validEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function normalizeName(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
 }
 
 function generateFourDigitCode() {
@@ -49,6 +68,13 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+type TeacherRow = {
+  id: string;
+  full_name: string | null;
+  institutional_email: string | null;
+  national_id: string | null;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
   if (req.method !== "POST") return json(req, { ok: false }, 405);
@@ -61,55 +87,92 @@ Deno.serve(async (req: Request) => {
     return json(req, { ok: false, error: "invalid_request" }, 400);
   }
 
-  const email = normalizeEmail(payload.email);
-  if (!validEmail(email)) return json(req, { ok: false, error: "invalid_email" }, 400);
+  const cedula = normalizeCedula(payload.cedula);
+  if (!cedula) return json(req, { ok: false, error: "invalid_national_id" }, 400);
   if (!RESEND_API_KEY) return json(req, { ok: false, error: "email_delivery_not_configured" }, 503);
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Respuesta genérica para no revelar si un correo pertenece o no a un docente.
-  const genericOk = () => json(req, { ok: true, message: "Si el correo está registrado, recibirá un código de acceso." });
+  const genericOk = () => json(req, {
+    ok: true,
+    message: "Si la cédula está registrada y tiene correo institucional, recibirá un código de acceso.",
+  });
+
+  let teacher: TeacherRow | null = null;
+
+  const { data: teacherByCedula } = await supabase
+    .from("teachers")
+    .select("id, full_name, institutional_email, national_id")
+    .eq("national_id", cedula)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (teacherByCedula?.id) teacher = teacherByCedula as TeacherRow;
+
+  // Compatibilidad con docentes creados antes de guardar national_id en Supabase.
+  // Si Firebase contiene la cédula, se intenta vincular por nombre exacto normalizado y se guarda la cédula en Supabase.
+  if (!teacher) {
+    try {
+      const directoryResponse = await fetch(
+        `${FIREBASE_DATABASE_URL}/docentes-registrados/${encodeURIComponent(cedula)}.json`,
+      );
+      if (directoryResponse.ok) {
+        const directory = await directoryResponse.json() as { nombresCompletos?: unknown } | null;
+        const directoryName = normalizeName(directory?.nombresCompletos);
+        if (directoryName) {
+          const { data: candidates } = await supabase
+            .from("teachers")
+            .select("id, full_name, institutional_email, national_id")
+            .eq("active", true);
+          const matches = ((candidates ?? []) as TeacherRow[])
+            .filter((candidate) => normalizeName(candidate.full_name) === directoryName);
+          if (matches.length === 1) {
+            const match = matches[0];
+            const { error: backfillError } = await supabase
+              .from("teachers")
+              .update({ national_id: cedula, updated_at: new Date().toISOString() })
+              .eq("id", match.id)
+              .is("national_id", null);
+            if (!backfillError) teacher = { ...match, national_id: cedula };
+          }
+        }
+      }
+    } catch {
+      // Si Firebase no responde, no se revela información y se mantiene la respuesta genérica.
+    }
+  }
+
+  if (!teacher?.id) return genericOk();
 
   const { data: existingAccess } = await supabase
     .from("teacher_access")
     .select("teacher_id, email, active")
-    .eq("email", email)
-    .eq("active", true)
+    .eq("teacher_id", teacher.id)
     .maybeSingle();
 
-  let teacherId = existingAccess?.teacher_id ? String(existingAccess.teacher_id) : "";
-  let teacherName = "Docente";
+  const institutionalEmail = normalizeEmail(teacher.institutional_email);
+  const accessEmail = normalizeEmail(existingAccess?.email);
+  const email = validEmail(institutionalEmail) ? institutionalEmail : accessEmail;
+  if (!validEmail(email)) return genericOk();
 
-  if (!teacherId) {
-    const { data: teacher } = await supabase
-      .from("teachers")
-      .select("id, full_name, institutional_email")
-      .ilike("institutional_email", email)
-      .eq("active", true)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!teacher?.id) return genericOk();
-    teacherId = String(teacher.id);
-    teacherName = String(teacher.full_name ?? "Docente");
-
-    const { error: accessError } = await supabase
-      .from("teacher_access")
-      .upsert({ teacher_id: teacherId, email, active: true, updated_at: new Date().toISOString() }, { onConflict: "teacher_id" });
-    if (accessError) return json(req, { ok: false, error: "access_preparation_failed" }, 500);
-  } else {
-    const { data: teacher } = await supabase.from("teachers").select("full_name").eq("id", teacherId).maybeSingle();
-    teacherName = String(teacher?.full_name ?? "Docente");
-  }
+  const { error: accessError } = await supabase
+    .from("teacher_access")
+    .upsert({
+      teacher_id: teacher.id,
+      email,
+      active: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "teacher_id" });
+  if (accessError) return json(req, { ok: false, error: "access_preparation_failed" }, 500);
 
   const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString();
   const { data: recentCode } = await supabase
     .from("teacher_login_codes")
     .select("id")
-    .eq("teacher_id", teacherId)
+    .eq("teacher_id", teacher.id)
     .gte("created_at", sixtySecondsAgo)
     .is("consumed_at", null)
     .limit(1)
@@ -124,7 +187,7 @@ Deno.serve(async (req: Request) => {
   const { data: loginCode, error: codeError } = await supabase
     .from("teacher_login_codes")
     .insert({
-      teacher_id: teacherId,
+      teacher_id: teacher.id,
       email,
       code_hash: `\\x${hash}`,
       expires_at: expiresAt,
@@ -134,6 +197,7 @@ Deno.serve(async (req: Request) => {
 
   if (codeError || !loginCode) return json(req, { ok: false, error: "code_creation_failed" }, 500);
 
+  const teacherName = String(teacher.full_name ?? "Docente").replace(/[<>&]/g, "");
   const emailResponse = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -144,7 +208,7 @@ Deno.serve(async (req: Request) => {
       from: EMAIL_FROM,
       to: [email],
       subject: "Código de acceso SIACD",
-      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto"><h2>Acceso docente SIACD</h2><p>Hola ${teacherName.replace(/[<>&]/g, "")},</p><p>Su código de acceso es:</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;padding:18px 0">${code}</div><p>El código vence en 10 minutos y solo puede usarse una vez.</p><p>Si usted no solicitó este acceso, ignore este mensaje.</p></div>`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto"><h2>Acceso docente SIACD</h2><p>Hola ${teacherName},</p><p>Su código de acceso es:</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;padding:18px 0">${code}</div><p>El código vence en 10 minutos y solo puede usarse una vez.</p><p>Si usted no solicitó este acceso, ignore este mensaje.</p></div>`,
     }),
   });
 
