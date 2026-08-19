@@ -1,4 +1,4 @@
-import SiacdApp from "../siacd-app-v3";
+import SiacdApp from "../siacd-app-v6";
 
 export default function CoordinatorPage() {
   return <SiacdApp forcedAccess="coordinator" />;
