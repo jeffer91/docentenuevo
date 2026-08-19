@@ -4,7 +4,7 @@ import "./globals.css";
 import "./admin-career-manager.css";
 import "./teacher-directory.css";
 import AdminShell from "./admin-shell";
-import SiacdApp from "./siacd-app-v3";
+import SiacdApp from "./siacd-app-v6";
 import TeacherPortal from "./teacher-portal";
 
 const container = document.getElementById("root");
