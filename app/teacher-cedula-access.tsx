@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useState } from "react";
 import { ArrowRight, IdCard, ShieldCheck } from "lucide-react";
