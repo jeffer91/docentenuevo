@@ -34,6 +34,7 @@ export default function AdminCareerManager() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [changed, setChanged] = useState(false);
 
   const isAdminPath = typeof window !== "undefined" && window.location.pathname.toLowerCase().includes("/administrador");
 
@@ -55,14 +56,21 @@ export default function AdminCareerManager() {
     setStaff(nextStaff);
     setCareers((careersResult.data ?? []) as Career[]);
     setAssignments((assignmentsResult.data ?? []) as Assignment[]);
-    setSelectedStaffId((current) => current || nextStaff[0]?.id || "");
+    setSelectedStaffId((current) => nextStaff.some((item) => item.id === current) ? current : nextStaff[0]?.id || "");
     setLoading(false);
   }, []);
 
   function openManager() {
     setOpen(true);
+    setChanged(false);
     setMessage("");
+    setQuery("");
     void load();
+  }
+
+  function closeManager() {
+    setOpen(false);
+    if (changed) window.location.reload();
   }
 
   const assignedIds = useMemo(
@@ -97,6 +105,7 @@ export default function AdminCareerManager() {
       return;
     }
     setAssignments((current) => [...current, { staff_id: selectedStaffId, career_id: careerId }]);
+    setChanged(true);
   }
 
   async function remove(careerId: string) {
@@ -110,6 +119,7 @@ export default function AdminCareerManager() {
       return;
     }
     setAssignments((current) => current.filter((item) => !(item.staff_id === selectedStaffId && item.career_id === careerId)));
+    setChanged(true);
   }
 
   if (!isAdminPath) return null;
@@ -126,15 +136,16 @@ export default function AdminCareerManager() {
               <div>
                 <span className="career-manager-kicker">Administrador</span>
                 <h2>Asignación de carreras</h2>
-                <p>Una carrera puede pertenecer a un solo coordinador.</p>
+                <p>Seleccione un coordinador y gestione sus carreras. Cada carrera puede pertenecer a un solo coordinador.</p>
               </div>
-              <button className="career-manager-close" onClick={() => setOpen(false)} aria-label="Cerrar"><X size={18} /></button>
+              <button className="career-manager-close" onClick={closeManager} aria-label="Cerrar"><X size={18} /></button>
             </header>
 
             <div className="career-manager-controls">
               <label>
                 <span>Coordinador</span>
-                <select value={selectedStaffId} onChange={(event) => setSelectedStaffId(event.target.value)}>
+                <select value={selectedStaffId} onChange={(event) => setSelectedStaffId(event.target.value)} disabled={!staff.length}>
+                  {!staff.length && <option value="">Sin coordinadores registrados</option>}
                   {staff.map((item) => <option key={item.id} value={item.id}>{item.full_name}{item.active ? "" : " · Inactivo"}</option>)}
                 </select>
               </label>
@@ -145,15 +156,16 @@ export default function AdminCareerManager() {
             </div>
 
             {message && <div className="career-manager-message">{message}</div>}
+            {!loading && !staff.length && <div className="career-manager-message">Primero cree un coordinador desde el botón “Nuevo coordinador”.</div>}
 
             <div className="career-manager-columns">
               <div className="career-manager-table-card">
                 <div className="career-manager-table-title"><div><strong>Carreras disponibles</strong><span>{available.length} sin asignar</span></div></div>
                 <div className="career-manager-table-wrap">
                   <table className="career-manager-table">
-                    <thead><tr><th>Carrera</th><th></th></tr></thead>
+                    <thead><tr><th>Carrera</th><th>Acción</th></tr></thead>
                     <tbody>
-                      {available.map((career) => <tr key={career.id}><td><strong>{career.name}</strong><span>{career.program || ""}</span></td><td><button className="career-assign" onClick={() => void assign(career.id)}>Asignar →</button></td></tr>)}
+                      {available.map((career) => <tr key={career.id}><td><strong>{career.name}</strong><span>{career.program || ""}</span></td><td><button className="career-assign" disabled={!selectedStaffId} onClick={() => void assign(career.id)}>Asignar →</button></td></tr>)}
                     </tbody>
                   </table>
                   {!loading && available.length === 0 && <div className="career-manager-empty">No hay carreras disponibles con este filtro.</div>}
@@ -164,7 +176,7 @@ export default function AdminCareerManager() {
                 <div className="career-manager-table-title"><div><strong>Carreras del coordinador</strong><span>{assigned.length} asignadas</span></div><UserCog size={18} /></div>
                 <div className="career-manager-table-wrap">
                   <table className="career-manager-table">
-                    <thead><tr><th>Carrera</th><th></th></tr></thead>
+                    <thead><tr><th>Carrera</th><th>Acción</th></tr></thead>
                     <tbody>
                       {assigned.map((career) => <tr key={career.id}><td><strong>{career.name}</strong><span>{career.program || ""}</span></td><td><button className="career-remove" onClick={() => void remove(career.id)}>Quitar</button></td></tr>)}
                     </tbody>
