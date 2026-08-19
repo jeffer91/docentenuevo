@@ -113,11 +113,15 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
 
       if (firebaseTeacher || supabaseTeacher) {
         const sourceText = resolved.source === "supabase" ? "Supabase tenía la información más reciente." : "Firebase aportó la información principal.";
+        const roles = firebaseTeacher?.roles ?? [];
+        const roleText = roles.length
+          ? ` Roles registrados: ${roles.join(", ")}. Al guardar, SIACD añadirá el rol docente sin eliminar los demás.`
+          : " Al guardar, SIACD registrará el rol docente.";
         setLookupState("found");
-        setLookupMessage(`Docente encontrado. ${sourceText}`);
+        setLookupMessage(`Persona encontrada. ${sourceText}${roleText}`);
       } else {
         setLookupState("new");
-        setLookupMessage("La cédula no está registrada. Complete los datos y SIACD la creará en el directorio.");
+        setLookupMessage("La cédula no está registrada. Complete los datos y SIACD la creará en el directorio con rol docente.");
       }
     } catch (error) {
       setLookupState("error");
