@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
-import "./coordinator-modal-polish.css";
 import "./admin-career-manager.css";
-import AdminCareerManager from "./admin-career-manager";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -17,8 +15,7 @@ const sourceSerif = Source_Serif_4({
 
 export const metadata: Metadata = {
   title: "SIACD - Acompañamiento Docente",
-  description:
-    "Sistema Integral de Acompañamiento y Certificación del Docente Nuevo.",
+  description: "Sistema Integral de Acompañamiento y Certificación del Docente Nuevo.",
   other: {
     "codex-preview": "development",
   },
@@ -28,18 +25,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
-      <body
-        className={`${manrope.variable} ${sourceSerif.variable} antialiased`}
-      >
+      <body className={`${manrope.variable} ${sourceSerif.variable} antialiased`}>
         {children}
-        <AdminCareerManager />
       </body>
     </html>
   );
