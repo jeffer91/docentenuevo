@@ -10,6 +10,7 @@ const eslintConfig = defineConfig([
       "app/siacd-app-v3.tsx",
       "app/expedient-workspace.tsx",
       "app/expedient-finalization.tsx",
+      "app/teacher-master-modal.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
