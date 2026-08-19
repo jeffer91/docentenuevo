@@ -1,44 +1,73 @@
 # SIACD · Acompañamiento Docente
 
-Aplicación web para gestionar el expediente completo de acompañamiento a docentes nuevos: registro, hitos H1–H6, evaluaciones, evidencias, seguimiento, aprobación, certificación y respaldos PDF/Excel.
+Aplicación web institucional para gestionar el expediente completo de acompañamiento a docentes nuevos: registro, cronograma H1–H6, evaluación, seguimiento, plan de mejora, evidencias, documentos y certificación.
 
-## Roles
+## Accesos
 
-- **Coordinador de Carrera:** ejecuta toda la operación del acompañamiento y envía el expediente a aprobación.
-- **Autoridad aprobadora:** revisa, devuelve u aprueba expedientes y habilita certificados.
-- **Administrador:** gestiona usuarios, carreras, períodos, criterios y configuración institucional.
+- **Coordinador:** acceso directo por `/coordinador/`. Selecciona su nombre y ve únicamente las carreras y docentes que tiene asignados.
+- **Administrador:** acceso por `/administrador/` con clave institucional. Gestiona coordinadores, carreras, docentes, estadísticas y catálogos.
+- **Aprobador:** estructura preparada para una fase posterior, actualmente no expuesta en la interfaz.
 
-## Tecnología
+## Asignación de carreras
 
-- React 19, Next.js/Vinext y TypeScript.
-- Supabase Auth, Postgres, Row Level Security y Storage privado.
-- Frontend publicable en GitHub Pages.
+La creación o edición de un coordinador administra únicamente su nombre y estado. La asignación de carreras se realiza desde **Gestionar carreras** mediante dos tablas: carreras disponibles y carreras asignadas al coordinador seleccionado.
 
-## Configuración local
+Una carrera institucional solo puede pertenecer a un coordinador a la vez. Al asignarla desaparece de disponibles; al quitarla vuelve a estar disponible.
 
-1. Instale Node.js 22 o superior.
-2. Ejecute `npm ci`.
-3. Copie `.env.example` como `.env.local` y complete las variables públicas de Supabase.
-4. Ejecute `npm run dev`.
+## Expediente docente
 
-El modo demostración está deshabilitado. La aplicación solo permite iniciar sesión cuando las variables de Supabase están configuradas y utiliza exclusivamente datos institucionales persistidos. Los roles se obtienen del perfil autenticado.
+Cada expediente concentra:
+
+- ficha del docente;
+- cronograma H1–H6;
+- 75 criterios operativos;
+- bitácora de seguimiento;
+- plan de mejora;
+- 17 criterios complementarios;
+- 21 criterios de calidad;
+- evidencias;
+- generación documental y certificación.
+
+El resultado integrado utiliza 60% del componente operativo, 15% de la matriz complementaria y 25% de calidad.
+
+## Tecnología y publicación
+
+- React 19 y TypeScript.
+- Supabase Postgres y Storage.
+- Vite para el artefacto estático publicado en Cloudflare Pages.
+- `app/static-main.tsx` es la entrada del build de Cloudflare y reutiliza los mismos componentes de acceso y administración que la ruta Next.
+
+La publicación institucional se realiza con:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\PUBLICAR_EN_CLOUDFLARE.ps1
+```
+
+El script instala dependencias, exige una validación ESLint sin advertencias, genera `pages-dist` y publica en el proyecto Cloudflare Pages `docentenuevo`.
 
 ## Base de datos
 
-La migración inicial está en `supabase/migrations/202608130001_initial_siacd.sql`. Incluye tablas, índices, políticas RLS, reglas de acceso por rol y el bucket privado `siacd-evidence`.
+Las migraciones oficiales están en `supabase/migrations/`. Las más recientes incorporan:
 
-Las funciones del navegador solo utilizan la clave publicable de Supabase. Nunca incluya una clave secreta o `service_role` en variables públicas.
+- personal SIACD y asignación de carreras;
+- expediente integral H1–H6;
+- matriz complementaria, calidad, evidencias y documentos;
+- restricción para impedir que una carrera se asigne a más de un coordinador.
 
-## Comandos
+## Estructura principal
 
-```bash
-npm run dev          # desarrollo
-npm run lint         # calidad de código
-npm run build        # artefacto de producción
-npm run build:pages  # frontend estático para GitHub Pages
-npm test             # compilación y prueba del HTML renderizado
+```text
+app/
+  administrador/       Ruta Next del administrador
+  coordinador/         Ruta Next del coordinador
+  admin-shell.tsx      Acceso y composición única del administrador
+  admin-career-manager.tsx
+  siacd-app-v3.tsx     Aplicación principal
+  expedient-workspace.tsx
+  expedient-finalization.tsx
+  static-main.tsx      Entrada real del build estático Cloudflare
+pages/                 Entradas HTML para Vite
+supabase/migrations/   Esquema y evolución de la base de datos
 ```
 
-## GitHub Pages
-
-El flujo `.github/workflows/pages.yml` compila y publica `pages-dist`. Configure `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` como secretos de GitHub Actions. El repositorio no contiene credenciales ni datos docentes.
+`siacd-app-v2.tsx` se conserva únicamente como referencia histórica y no participa en la aplicación activa ni en la validación.
