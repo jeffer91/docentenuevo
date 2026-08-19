@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ArrowRight, CheckCircle2, LogOut, Mail, ShieldCheck } from "lucide-react";
@@ -13,6 +14,14 @@ type TeacherSession = {
   full_name: string;
   email: string;
   session_expires_at: string;
+};
+
+type TeacherVerifyRow = {
+  device_token: string;
+  teacher_id: string;
+  full_name: string;
+  email: string;
+  expires_at: string;
 };
 
 type PortalExpedient = {
@@ -143,7 +152,7 @@ export default function TeacherPortal() {
     });
     setBusy(false);
 
-    const row = !error && Array.isArray(data) ? data[0] as (TeacherSession & { device_token: string }) | undefined : undefined;
+    const row = !error && Array.isArray(data) ? (data[0] as TeacherVerifyRow | undefined) : undefined;
     if (!row?.device_token) {
       setMessage("El código no es válido o ya venció. Puede solicitar uno nuevo.");
       return;
@@ -155,7 +164,7 @@ export default function TeacherPortal() {
       teacher_id: row.teacher_id,
       full_name: row.full_name,
       email: row.email,
-      session_expires_at: row.session_expires_at,
+      session_expires_at: row.expires_at,
     });
     setCode("");
     setMessage("");
