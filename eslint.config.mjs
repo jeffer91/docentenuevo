@@ -10,6 +10,7 @@ const eslintConfig = defineConfig([
       "app/siacd-app-v3.tsx",
       "app/expedient-workspace.tsx",
       "app/expedient-workspace-v4.tsx",
+      "app/expedient-workspace-v5.tsx",
       "app/expedient-finalization.tsx",
       "app/expedient-finalization-legacy.tsx",
       "app/teacher-master-modal.tsx",
@@ -18,6 +19,7 @@ const eslintConfig = defineConfig([
       "app/teacher-evidence-hub.tsx",
       "app/teacher-evidence-panel.tsx",
       "app/evidence-review-workspace.tsx",
+      "app/review-cycle-workspace.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
@@ -28,6 +30,7 @@ const eslintConfig = defineConfig([
     files: [
       "app/expedient-workspace.tsx",
       "app/expedient-workspace-v4.tsx",
+      "app/expedient-workspace-v5.tsx",
       "app/expedient-finalization.tsx",
       "app/expedient-finalization-legacy.tsx",
     ],
