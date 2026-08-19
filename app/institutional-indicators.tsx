@@ -69,13 +69,14 @@ export default function InstitutionalIndicators({ staffId, mode, onClose }: {
       setMessage("No se pudieron cargar los indicadores del Bloque 6.");
       return;
     }
+    setMessage("");
     setData(result as Data);
   }, [staffId]);
 
   useEffect(() => { void load(); }, [load]);
 
-  const careers = useMemo(() => [...new Map(data.rows.map((row) => [row.career_id, row.career])).entries()], [data.rows]);
-  const periods = useMemo(() => [...new Map(data.rows.map((row) => [row.period_id, row.period])).entries()], [data.rows]);
+  const careers = useMemo(() => [...new Map(data.rows.map((row) => [row.career_id, row.career] as [string,string])).entries()], [data.rows]);
+  const periods = useMemo(() => [...new Map(data.rows.map((row) => [row.period_id, row.period] as [string,string])).entries()], [data.rows]);
   const filtered = useMemo(() => data.rows.filter((row) =>
     (!career || row.career_id === career) && (!period || row.period_id === period) && (!state || row.classification === state)
   ), [data.rows, career, period, state]);
