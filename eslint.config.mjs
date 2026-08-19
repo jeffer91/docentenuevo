@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
       "app/expedient-workspace.tsx",
       "app/expedient-finalization.tsx",
       "app/teacher-master-modal.tsx",
+      "app/teacher-portal.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
@@ -32,6 +33,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "app/siacd-app-v2.tsx",
+    "supabase/functions/**",
   ]),
 ]);
 
