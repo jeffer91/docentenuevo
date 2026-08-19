@@ -24,6 +24,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import AdminCareerManager from "./admin-career-manager";
 import ExpedientWorkspace from "./expedient-workspace";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "./lib/supabase";
+import { mergeDirectoryCareers, readDirectoryTeacher, writeDirectoryTeacher } from "./lib/teacher-directory";
+import TeacherMasterModal from "./teacher-master-modal";
+import TeacherRegistrationModal, { type TeacherRegistrationInput } from "./teacher-registration-modal";
 
 export type AccessMode = "landing" | "coordinator" | "admin";
 type StaffRole = "coordinator" | "approver" | "admin";
@@ -40,10 +43,10 @@ export type StaffMember = {
   careerIds: string[];
 };
 
-type ScheduleRange = { startTime: string; endTime: string };
-
 export type Teacher = {
   id: string;
+  teacherId: string;
+  nationalId: string;
   coordinatorId: string;
   name: string;
   email: string;
@@ -61,21 +64,6 @@ export type Teacher = {
   currentHito: string;
   criticalGaps: number;
   hitosExecuted: number;
-};
-
-type NewTeacherInput = {
-  name: string;
-  careerId: string;
-  periodId: string;
-  subject: string;
-  modality: string;
-  entryDate: string;
-  activitiesStartDate: string;
-  plannedCloseDate: string;
-  schedules: ScheduleRange[];
-  email: string;
-  teams: string;
-  telegram: string;
 };
 
 type CoordinatorInput = {
@@ -162,6 +150,8 @@ function mapExpedient(row: Record<string, unknown>): Teacher {
 
   return {
     id: String(row.id),
+    teacherId: String(teacher?.id ?? ""),
+    nationalId: String(teacher?.national_id ?? ""),
     coordinatorId: String(row.coordinator_staff_id ?? ""),
     name: String(teacher?.full_name ?? "Sin nombre"),
     email: String(teacher?.institutional_email ?? ""),
@@ -212,11 +202,9 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
   const [showCoordinatorModal, setShowCoordinatorModal] = useState(false);
   const [editingCoordinator, setEditingCoordinator] = useState<StaffMember | null>(null);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
+  const [editingTeacherMaster, setEditingTeacherMaster] = useState<Teacher | null>(null);
 
-  const coordinators = useMemo(
-    () => staff.filter((item) => item.role === "coordinator"),
-    [staff],
-  );
+  const coordinators = useMemo(() => staff.filter((item) => item.role === "coordinator"), [staff]);
   const selectedCoordinator = useMemo(
     () => staff.find((item) => item.id === selectedCoordinatorId && item.role === "coordinator") ?? null,
     [selectedCoordinatorId, staff],
@@ -264,7 +252,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     if (!supabase) return;
     let query = supabase
       .from("expedients")
-      .select("id, coordinator_staff_id, status, subject_names, modality, activities_start_on, planned_close_on, critical_gaps, teachers(full_name, institutional_email, started_institution_on), careers(id, name, program), academic_periods(name), hito_schedules(hito_id, scheduled_on, executed_on, coordinator_validated), expedient_schedules(sequence, start_time, end_time)")
+      .select("id, coordinator_staff_id, status, subject_names, modality, activities_start_on, planned_close_on, critical_gaps, teachers(id, national_id, full_name, institutional_email, started_institution_on), careers(id, name, program), academic_periods(name), hito_schedules(hito_id, scheduled_on, executed_on, coordinator_validated), expedient_schedules(sequence, start_time, end_time)")
       .order("created_at", { ascending: false });
 
     if (accessMode === "coordinator") {
@@ -277,6 +265,10 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
 
     const { data, error } = await query;
     if (error) {
+      if (/national_id|schema cache|does not exist/i.test(error.message)) {
+        setSchemaIssue("Falta aplicar la migración 202608190001_teacher_directory.sql en Supabase.");
+        return;
+      }
       setToast(`No se pudieron cargar los expedientes: ${error.message}`);
       return;
     }
@@ -305,7 +297,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 2800);
+    const timer = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -374,31 +366,58 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     await loadBaseData();
   }
 
-  async function saveTeacher(input: NewTeacherInput) {
+  async function saveTeacher(input: TeacherRegistrationInput) {
     const supabase = getSupabaseBrowserClient();
     if (!supabase || !selectedCoordinator) return setToast("Seleccione un coordinador antes de registrar docentes");
     if (!selectedCoordinator.careerIds.includes(input.careerId)) {
       return setToast("La carrera seleccionada no está asignada a este coordinador");
     }
+    const selectedCareer = assignedCareers.find((career) => career.id === input.careerId);
+    if (!selectedCareer) return setToast("No se encontró la carrera seleccionada");
 
-    const { data: teacher, error: teacherError } = await supabase
+    const now = new Date().toISOString();
+    const existingResult = await supabase
       .from("teachers")
-      .insert({
-        full_name: input.name,
-        institutional_email: input.email || null,
-        started_institution_on: input.entryDate,
-        created_by: null,
-      })
       .select("id")
-      .single();
-    if (teacherError || !teacher) {
-      return setToast(`No se pudo registrar el docente: ${teacherError?.message ?? "error de base de datos"}`);
+      .eq("national_id", input.nationalId)
+      .maybeSingle();
+    if (existingResult.error) return setToast(`No se pudo comprobar el docente: ${existingResult.error.message}`);
+
+    let teacherId = existingResult.data?.id ? String(existingResult.data.id) : "";
+    let createdTeacher = false;
+    if (teacherId) {
+      const { error } = await supabase
+        .from("teachers")
+        .update({
+          full_name: input.name,
+          institutional_email: input.email || null,
+          started_institution_on: input.entryDate || null,
+          updated_at: now,
+        })
+        .eq("id", teacherId);
+      if (error) return setToast(`No se pudo actualizar el docente: ${error.message}`);
+    } else {
+      const { data, error } = await supabase
+        .from("teachers")
+        .insert({
+          national_id: input.nationalId,
+          full_name: input.name,
+          institutional_email: input.email || null,
+          started_institution_on: input.entryDate || null,
+          created_by: null,
+          updated_at: now,
+        })
+        .select("id")
+        .single();
+      if (error || !data) return setToast(`No se pudo registrar el docente: ${error?.message ?? "error de base de datos"}`);
+      teacherId = String(data.id);
+      createdTeacher = true;
     }
 
     const { data: expedient, error: expedientError } = await supabase
       .from("expedients")
       .insert({
-        teacher_id: teacher.id,
+        teacher_id: teacherId,
         career_id: input.careerId,
         period_id: input.periodId,
         coordinator_id: null,
@@ -416,8 +435,9 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
       .single();
 
     if (expedientError || !expedient) {
-      await supabase.from("teachers").delete().eq("id", teacher.id);
-      return setToast(`No se pudo crear el expediente: ${expedientError?.message ?? "error de base de datos"}`);
+      if (createdTeacher) await supabase.from("teachers").delete().eq("id", teacherId);
+      const duplicate = /duplicate|unique/i.test(expedientError?.message ?? "");
+      return setToast(duplicate ? "Ese docente ya tiene un expediente para esta carrera y período." : `No se pudo crear el expediente: ${expedientError?.message ?? "error de base de datos"}`);
     }
 
     const { error: rangesError } = await supabase
@@ -430,7 +450,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
       })));
     if (rangesError) {
       await supabase.from("expedients").delete().eq("id", expedient.id);
-      await supabase.from("teachers").delete().eq("id", teacher.id);
+      if (createdTeacher) await supabase.from("teachers").delete().eq("id", teacherId);
       return setToast(`No se pudieron guardar las jornadas: ${rangesError.message}`);
     }
 
@@ -439,12 +459,27 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
       .insert(hitoIds.map((hitoId) => ({ expedient_id: expedient.id, hito_id: hitoId })));
     if (hitosError) {
       await supabase.from("expedients").delete().eq("id", expedient.id);
-      await supabase.from("teachers").delete().eq("id", teacher.id);
+      if (createdTeacher) await supabase.from("teachers").delete().eq("id", teacherId);
       return setToast(`No se pudo crear H1–H6: ${hitosError.message}`);
     }
 
+    let firebaseSynced = true;
+    try {
+      const existingDirectory = await readDirectoryTeacher(input.nationalId);
+      await writeDirectoryTeacher({
+        cedula: input.nationalId,
+        nombresCompletos: input.name,
+        carreras: mergeDirectoryCareers(existingDirectory?.carreras ?? [], input.directoryCareers, [selectedCareer.name]),
+        actualizadoEn: now,
+      });
+    } catch {
+      firebaseSynced = false;
+    }
+
     setShowTeacherModal(false);
-    setToast("Docente y expediente creados correctamente");
+    setToast(firebaseSynced
+      ? "Docente, directorio y expediente guardados correctamente"
+      : "Expediente creado. Firebase no pudo sincronizarse; los datos de SIACD quedaron guardados.");
     await loadExpedients(selectedCoordinator.id);
   }
 
@@ -461,542 +496,136 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
 
   return (
     <div className="siacd-shell">
-      <div className="mobile-topbar">
-        <strong>SIACD</strong>
-        <button className="icon-button" aria-label="Abrir menú" onClick={() => setMobileOpen(true)}><Menu size={18} /></button>
-      </div>
-
+      <div className="mobile-topbar"><strong>SIACD</strong><button className="icon-button" aria-label="Abrir menú" onClick={() => setMobileOpen(true)}><Menu size={18} /></button></div>
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
         <InstitutionBrand compact />
         <div className="nav-label">Gestión</div>
         <nav className="nav">
           {navItems.map((item) => (
-            <button
-              key={item.view}
-              className={`nav-button ${view === item.view ? "active" : ""}`}
-              onClick={() => {
-                if (item.view === "assignments") openCareerAssignments();
-                else setView(item.view);
-                setMobileOpen(false);
-              }}
-            >
-              <item.icon />{item.label}
-            </button>
+            <button key={item.view} className={`nav-button ${view === item.view ? "active" : ""}`} onClick={() => {
+              if (item.view === "assignments") openCareerAssignments();
+              else setView(item.view);
+              setMobileOpen(false);
+            }}><item.icon />{item.label}</button>
           ))}
         </nav>
         <div className="sidebar-spacer" />
-        {accessMode === "coordinator" && (
-          <button className="nav-button" onClick={changeCoordinator}><UserCog />Cambiar coordinador</button>
-        )}
-        <div className="user-card">
-          <div className="avatar">{initials(profileName)}</div>
-          <div><strong>{profileName}</strong><span>{accessMode === "admin" ? "Administrador general" : "Coordinador de Carrera"}</span></div>
-        </div>
+        {accessMode === "coordinator" && <button className="nav-button" onClick={changeCoordinator}><UserCog />Cambiar coordinador</button>}
+        <div className="user-card"><div className="avatar">{initials(profileName)}</div><div><strong>{profileName}</strong><span>{accessMode === "admin" ? "Administrador general" : "Coordinador de Carrera"}</span></div></div>
       </aside>
-
       {mobileOpen && <button aria-label="Cerrar menú" className="mobile-scrim" onClick={() => setMobileOpen(false)} />}
 
       <main className="main">
         <Header accessMode={accessMode} view={view} onNewTeacher={() => setShowTeacherModal(true)} coordinatorName={selectedCoordinator?.full_name} />
-
-        {view === "dashboard" && (
-          <Dashboard
-            teachers={teachers}
-            accessMode={accessMode}
-            coordinatorCount={coordinators.filter((item) => item.active).length}
-            onViewTeachers={() => setView("teachers")}
-            onOpenTeacher={setSelectedTeacher}
-          />
-        )}
-        {view === "teachers" && (
-          <TeachersPanel
-            teachers={teachers}
-            careers={accessMode === "coordinator" ? assignedCareers : careers}
-            canCreate={accessMode === "coordinator"}
-            onNew={() => setShowTeacherModal(true)}
-            onOpen={setSelectedTeacher}
-          />
-        )}
+        {view === "dashboard" && <Dashboard teachers={teachers} accessMode={accessMode} coordinatorCount={coordinators.filter((item) => item.active).length} onViewTeachers={() => setView("teachers")} onOpenTeacher={setSelectedTeacher} />}
+        {view === "teachers" && <TeachersPanel teachers={teachers} careers={accessMode === "coordinator" ? assignedCareers : careers} canCreate={accessMode === "coordinator"} onNew={() => setShowTeacherModal(true)} onOpen={setSelectedTeacher} onEditMaster={setEditingTeacherMaster} />}
         {view === "schedule" && <ScheduleOverview teachers={teachers} onOpen={setSelectedTeacher} />}
         {view === "reports" && <Reports teachers={teachers} />}
-        {view === "coordinators" && accessMode === "admin" && (
-          <CoordinatorsPanel
-            coordinators={coordinators}
-            onNew={() => {
-              setEditingCoordinator(null);
-              setShowCoordinatorModal(true);
-            }}
-            onEdit={(coordinator) => {
-              setEditingCoordinator(coordinator);
-              setShowCoordinatorModal(true);
-            }}
-            onManage={openCareerAssignments}
-            onToggle={toggleCoordinator}
-          />
-        )}
-        {view === "assignments" && accessMode === "admin" && (
-          <AdminCareerManager
-            coordinators={coordinators}
-            careers={careers}
-            selectedStaffId={assignmentCoordinatorId}
-            onSelectStaff={setAssignmentCoordinatorId}
-            onChanged={loadBaseData}
-          />
-        )}
+        {view === "coordinators" && accessMode === "admin" && <CoordinatorsPanel coordinators={coordinators} onNew={() => { setEditingCoordinator(null); setShowCoordinatorModal(true); }} onEdit={(coordinator) => { setEditingCoordinator(coordinator); setShowCoordinatorModal(true); }} onManage={openCareerAssignments} onToggle={toggleCoordinator} />}
+        {view === "assignments" && accessMode === "admin" && <AdminCareerManager coordinators={coordinators} careers={careers} selectedStaffId={assignmentCoordinatorId} onSelectStaff={setAssignmentCoordinatorId} onChanged={loadBaseData} />}
         {view === "settings" && accessMode === "admin" && <CatalogSummary careers={careers} periods={periods} staff={staff} />}
       </main>
 
-      {showTeacherModal && selectedCoordinator && (
-        <TeacherModal
-          careers={assignedCareers}
-          periods={periods}
-          coordinatorName={selectedCoordinator.full_name}
-          onClose={() => setShowTeacherModal(false)}
-          onSave={saveTeacher}
-        />
-      )}
-      {showCoordinatorModal && accessMode === "admin" && (
-        <CoordinatorModal
-          coordinator={editingCoordinator}
-          onClose={() => {
-            setShowCoordinatorModal(false);
-            setEditingCoordinator(null);
-          }}
-          onSave={saveCoordinator}
-        />
-      )}
-      {selectedTeacher && (
-        <ExpedientWorkspace
-          teacher={selectedTeacher}
-          accessMode={accessMode}
-          coordinatorName={staff.find((item) => item.id === selectedTeacher.coordinatorId)?.full_name ?? selectedCoordinator?.full_name ?? "Coordinador"}
-          onClose={() => setSelectedTeacher(null)}
-          onChanged={async () => {
-            await loadExpedients(accessMode === "coordinator" ? selectedCoordinatorId : undefined);
-          }}
-        />
-      )}
+      {showTeacherModal && selectedCoordinator && <TeacherRegistrationModal careers={assignedCareers} periods={periods} coordinatorName={selectedCoordinator.full_name} onClose={() => setShowTeacherModal(false)} onSave={saveTeacher} />}
+      {showCoordinatorModal && accessMode === "admin" && <CoordinatorModal coordinator={editingCoordinator} onClose={() => { setShowCoordinatorModal(false); setEditingCoordinator(null); }} onSave={saveCoordinator} />}
+      {editingTeacherMaster && <TeacherMasterModal teacher={{ teacherId: editingTeacherMaster.teacherId, nationalId: editingTeacherMaster.nationalId, name: editingTeacherMaster.name, email: editingTeacherMaster.email, entryDate: editingTeacherMaster.entryDate }} careers={accessMode === "admin" ? careers : assignedCareers} onClose={() => setEditingTeacherMaster(null)} onChanged={async () => { await loadExpedients(accessMode === "coordinator" ? selectedCoordinatorId : undefined); }} />}
+      {selectedTeacher && <ExpedientWorkspace teacher={selectedTeacher} accessMode={accessMode} coordinatorName={staff.find((item) => item.id === selectedTeacher.coordinatorId)?.full_name ?? selectedCoordinator?.full_name ?? "Coordinador"} onClose={() => setSelectedTeacher(null)} onChanged={async () => { await loadExpedients(accessMode === "coordinator" ? selectedCoordinatorId : undefined); }} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
 
 function InstitutionBrand({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className={`institution-brand ${compact ? "compact" : ""}`}>
-      <img src="/logo-itsqmet.png" alt="Instituto Tecnológico Superior Quito Metropolitano" />
-      <span>SIACD · Acompañamiento Docente</span>
-    </div>
-  );
+  return <div className={`institution-brand ${compact ? "compact" : ""}`}><img src="/logo-itsqmet.png" alt="Instituto Tecnológico Superior Quito Metropolitano" /><span>SIACD · Acompañamiento Docente</span></div>;
 }
 
 function AccessLanding() {
-  return (
-    <div className="login-page">
-      <section className="login-art">
-        <InstitutionBrand />
-        <div>
-          <p className="eyebrow">ITSQMET · Sistema institucional</p>
-          <h1>Gestión del acompañamiento docente</h1>
-          <p>Una sola base institucional, con acceso separado para Coordinadores y Administrador.</p>
-        </div>
-        <p>Proceso CGC-PRO-121 · Uso institucional</p>
-      </section>
-      <section className="login-form-wrap">
-        <div className="login-form">
-          <h2>Seleccione su acceso</h2>
-          <p>Ingrese por el enlace correspondiente a su función.</p>
-          <a className="primary-button" href="./coordinador/" style={{ justifyContent: "center", textDecoration: "none" }}>
-            <Users size={15} />Acceso Coordinadores
-          </a>
-          <a className="secondary-button" href="./administrador/" style={{ justifyContent: "center", textDecoration: "none", width: "100%", marginTop: 10 }}>
-            <ShieldCheck size={15} />Acceso Administrador
-          </a>
-        </div>
-      </section>
-    </div>
-  );
+  return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">ITSQMET · Sistema institucional</p><h1>Gestión del acompañamiento docente</h1><p>Una sola base institucional, con acceso separado para Coordinadores y Administrador.</p></div><p>Proceso CGC-PRO-121 · Uso institucional</p></section><section className="login-form-wrap"><div className="login-form"><h2>Seleccione su acceso</h2><p>Ingrese por el enlace correspondiente a su función.</p><a className="primary-button" href="./coordinador/" style={{ justifyContent: "center", textDecoration: "none" }}><Users size={15} />Acceso Coordinadores</a><a className="secondary-button" href="./administrador/" style={{ justifyContent: "center", textDecoration: "none", width: "100%", marginTop: 10 }}><ShieldCheck size={15} />Acceso Administrador</a></div></section></div>;
 }
 
 function CoordinatorPicker({ coordinators, onChoose }: { coordinators: StaffMember[]; onChoose: (id: string) => void }) {
   const [value, setValue] = useState(coordinators[0]?.id ?? "");
-  useEffect(() => {
-    if (!value && coordinators[0]) setValue(coordinators[0].id);
-  }, [coordinators, value]);
-
-  return (
-    <div className="login-page">
-      <section className="login-art">
-        <InstitutionBrand />
-        <div>
-          <p className="eyebrow">Acceso de coordinadores</p>
-          <h1>Seleccione su nombre</h1>
-          <p>La app mostrará únicamente las carreras y docentes asignados a ese coordinador.</p>
-        </div>
-        <p>Acceso directo · Sin login</p>
-      </section>
-      <section className="login-form-wrap">
-        <div className="login-form">
-          <h2>Coordinador de Carrera</h2>
-          {coordinators.length ? (
-            <>
-              <div className="field">
-                <label>Nombre</label>
-                <select value={value} onChange={(event) => setValue(event.target.value)}>
-                  {coordinators.map((coordinator) => <option key={coordinator.id} value={coordinator.id}>{coordinator.full_name}</option>)}
-                </select>
-              </div>
-              <button className="primary-button" style={{ width: "100%", justifyContent: "center" }} onClick={() => value && onChoose(value)}>
-                Ingresar <ArrowRight size={15} />
-              </button>
-            </>
-          ) : (
-            <div className="error-note">No existen coordinadores activos. Deben crearse desde Administrador.</div>
-          )}
-          <a className="text-link" href="../" style={{ display: "inline-block", marginTop: 16 }}>Volver al inicio</a>
-        </div>
-      </section>
-    </div>
-  );
+  useEffect(() => { if (!value && coordinators[0]) setValue(coordinators[0].id); }, [coordinators, value]);
+  return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">Acceso de coordinadores</p><h1>Seleccione su nombre</h1><p>La app mostrará únicamente las carreras y docentes asignados a ese coordinador.</p></div><p>Acceso directo · Sin login</p></section><section className="login-form-wrap"><div className="login-form"><h2>Coordinador de Carrera</h2>{coordinators.length ? <><div className="field"><label>Nombre</label><select value={value} onChange={(event) => setValue(event.target.value)}>{coordinators.map((coordinator) => <option key={coordinator.id} value={coordinator.id}>{coordinator.full_name}</option>)}</select></div><button className="primary-button" style={{ width: "100%", justifyContent: "center" }} onClick={() => value && onChoose(value)}>Ingresar <ArrowRight size={15} /></button></> : <div className="error-note">No existen coordinadores activos. Deben crearse desde Administrador.</div>}<a className="text-link" href="../" style={{ display: "inline-block", marginTop: 16 }}>Volver al inicio</a></div></section></div>;
 }
 
 function ConfigurationRequired() {
-  return (
-    <div className="login-page">
-      <section className="login-art"><InstitutionBrand /><div><p className="eyebrow">ITSQMET</p><h1>Conexión requerida</h1><p>Configure las variables públicas de Supabase.</p></div></section>
-      <section className="login-form-wrap"><div className="login-form"><h2>Configuración pendiente</h2><div className="error-note">No se encontraron VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.</div></div></section>
-    </div>
-  );
+  return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">ITSQMET</p><h1>Conexión requerida</h1><p>Configure las variables públicas de Supabase.</p></div></section><section className="login-form-wrap"><div className="login-form"><h2>Configuración pendiente</h2><div className="error-note">No se encontraron VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.</div></div></section></div>;
 }
 
 function MigrationRequired({ message }: { message: string }) {
-  return (
-    <div className="login-page">
-      <section className="login-art"><InstitutionBrand /><div><p className="eyebrow">Base de datos</p><h1>Actualización pendiente</h1><p>Revise la conexión o las migraciones del sistema.</p></div></section>
-      <section className="login-form-wrap"><div className="login-form"><h2>No se pudo iniciar SIACD</h2><div className="error-note">{message}</div></div></section>
-    </div>
-  );
+  return <div className="login-page"><section className="login-art"><InstitutionBrand /><div><p className="eyebrow">Base de datos</p><h1>Actualización pendiente</h1><p>Revise la conexión o las migraciones del sistema.</p></div></section><section className="login-form-wrap"><div className="login-form"><h2>No se pudo iniciar SIACD</h2><div className="error-note">{message}</div></div></section></div>;
 }
 
-function LoadingScreen() {
-  return <div className="login-form-wrap">Preparando SIACD…</div>;
-}
+function LoadingScreen() { return <div className="login-form-wrap">Preparando SIACD…</div>; }
 
-function Header({ accessMode, view, onNewTeacher, coordinatorName }: {
-  accessMode: AccessMode;
-  view: View;
-  onNewTeacher: () => void;
-  coordinatorName?: string;
-}) {
+function Header({ accessMode, view, onNewTeacher, coordinatorName }: { accessMode: AccessMode; view: View; onNewTeacher: () => void; coordinatorName?: string }) {
   const titles: Record<View, [string, string]> = {
     dashboard: ["Panel de acompañamiento", accessMode === "admin" ? "Vista institucional completa" : `Gestión de ${coordinatorName ?? "coordinación"}`],
-    teachers: ["Docentes y expedientes", "Abra un docente para trabajar su expediente completo"],
+    teachers: ["Docentes y expedientes", "Busque por cédula, docente, carrera o asignatura"],
     schedule: ["Cronograma institucional", "Estado general de H1–H6 por docente"],
     reports: ["Estadísticas y reportes", "Indicadores de avance y brechas"],
     coordinators: ["Coordinadores", "Cree coordinadores y gestione posteriormente sus carreras"],
     assignments: ["Asignación de carreras", "Distribuya las carreras institucionales entre los coordinadores"],
     settings: ["Catálogos", "Resumen de carreras, períodos y personal"],
   };
-
-  return (
-    <header className="topline">
-      <div>
-        <div className="eyebrow">Sistema Integral de Acompañamiento</div>
-        <h1>{titles[view][0]}</h1>
-        <p className="subtitle">{titles[view][1]}</p>
-      </div>
-      <div className="top-actions">
-        {accessMode === "coordinator" && <button className="primary-button" onClick={onNewTeacher}><Plus size={15} />Nuevo docente</button>}
-      </div>
-    </header>
-  );
+  return <header className="topline"><div><div className="eyebrow">Sistema Integral de Acompañamiento</div><h1>{titles[view][0]}</h1><p className="subtitle">{titles[view][1]}</p></div><div className="top-actions">{accessMode === "coordinator" && <button className="primary-button" onClick={onNewTeacher}><Plus size={15} />Nuevo docente</button>}</div></header>;
 }
 
-function Dashboard({ teachers, accessMode, coordinatorCount, onViewTeachers, onOpenTeacher }: {
-  teachers: Teacher[];
-  accessMode: AccessMode;
-  coordinatorCount: number;
-  onViewTeachers: () => void;
-  onOpenTeacher: (teacher: Teacher) => void;
-}) {
+function Dashboard({ teachers, accessMode, coordinatorCount, onViewTeachers, onOpenTeacher }: { teachers: Teacher[]; accessMode: AccessMode; coordinatorCount: number; onViewTeachers: () => void; onOpenTeacher: (teacher: Teacher) => void }) {
   const active = teachers.filter((teacher) => teacher.status !== "Certificado").length;
   const certified = teachers.filter((teacher) => teacher.status === "Certificado").length;
   const gaps = teachers.reduce((sum, teacher) => sum + teacher.criticalGaps, 0);
   const average = teachers.length ? Math.round(teachers.reduce((sum, teacher) => sum + teacher.progress, 0) / teachers.length) : 0;
-
-  return (
-    <>
-      <div className="hero-grid">
-        <section className="hero-card">
-          <div className="eyebrow">Información institucional</div>
-          <h2>{teachers.length ? `${teachers.length} expediente${teachers.length === 1 ? "" : "s"} visible${teachers.length === 1 ? "" : "s"}` : "Listo para iniciar"}</h2>
-          <p>Abra un docente para trabajar ficha, cronograma, H1–H6, bitácora y plan de mejora.</p>
-          <div className="hero-progress"><div className="progress-track"><div className="progress-fill" style={{ width: `${average}%` }} /></div><strong>{average}% de avance promedio</strong></div>
-        </section>
-        <aside className="approval-card">
-          <div className="round-icon"><FolderOpen size={20} /></div>
-          <h3>Expediente completo</h3>
-          <p>El expediente concentra el trabajo operativo y documental de cada docente.</p>
-          {teachers[0] && <button className="secondary-button" onClick={() => onOpenTeacher(teachers[0])}>Abrir reciente <ChevronRight size={14} /></button>}
-        </aside>
-      </div>
-      <div className="metric-grid">
-        <Metric icon={Users} label="Docentes activos" value={String(active)} note="Procesos en curso" />
-        <Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Puntajes críticos menores a 3" tone="red" />
-        <Metric icon={Clock3} label="Avance promedio" value={`${average}%`} note="Hitos ejecutados" tone="gold" />
-        <Metric icon={accessMode === "admin" ? UserCog : ShieldCheck} label={accessMode === "admin" ? "Coordinadores" : "Certificados"} value={String(accessMode === "admin" ? coordinatorCount : certified)} note={accessMode === "admin" ? "Activos" : "Procesos finalizados"} tone="blue" />
-      </div>
-      <section className="panel">
-        <div className="panel-head"><div><h3>Expedientes recientes</h3><p>Abra uno para continuar el acompañamiento</p></div><button className="text-link" onClick={onViewTeachers}>Ver todos</button></div>
-        <div className="teacher-list">
-          {teachers.length
-            ? teachers.slice(0, 5).map((teacher) => <TeacherRow key={teacher.id} teacher={teacher} onOpen={onOpenTeacher} />)
-            : <div className="empty-state"><h3>Sin expedientes</h3><p>No existen docentes registrados para esta vista.</p></div>}
-        </div>
-      </section>
-    </>
-  );
+  return <><div className="hero-grid"><section className="hero-card"><div className="eyebrow">Información institucional</div><h2>{teachers.length ? `${teachers.length} expediente${teachers.length === 1 ? "" : "s"} visible${teachers.length === 1 ? "" : "s"}` : "Listo para iniciar"}</h2><p>Abra un docente para trabajar ficha, cronograma, H1–H6, bitácora y plan de mejora.</p><div className="hero-progress"><div className="progress-track"><div className="progress-fill" style={{ width: `${average}%` }} /></div><strong>{average}% de avance promedio</strong></div></section><aside className="approval-card"><div className="round-icon"><FolderOpen size={20} /></div><h3>Expediente completo</h3><p>El expediente concentra el trabajo operativo y documental de cada docente.</p>{teachers[0] && <button className="secondary-button" onClick={() => onOpenTeacher(teachers[0])}>Abrir reciente <ChevronRight size={14} /></button>}</aside></div><div className="metric-grid"><Metric icon={Users} label="Docentes activos" value={String(active)} note="Procesos en curso" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Puntajes críticos menores a 3" tone="red" /><Metric icon={Clock3} label="Avance promedio" value={`${average}%`} note="Hitos ejecutados" tone="gold" /><Metric icon={accessMode === "admin" ? UserCog : ShieldCheck} label={accessMode === "admin" ? "Coordinadores" : "Certificados"} value={String(accessMode === "admin" ? coordinatorCount : certified)} note={accessMode === "admin" ? "Activos" : "Procesos finalizados"} tone="blue" /></div><section className="panel"><div className="panel-head"><div><h3>Expedientes recientes</h3><p>Abra uno para continuar el acompañamiento</p></div><button className="text-link" onClick={onViewTeachers}>Ver todos</button></div><div className="teacher-list">{teachers.length ? teachers.slice(0, 5).map((teacher) => <TeacherRow key={teacher.id} teacher={teacher} onOpen={onOpenTeacher} />) : <div className="empty-state"><h3>Sin expedientes</h3><p>No existen docentes registrados para esta vista.</p></div>}</div></section></>;
 }
 
-function Metric({ icon: Icon, label, value, note, tone = "" }: {
-  icon: typeof Users;
-  label: string;
-  value: string;
-  note: string;
-  tone?: string;
-}) {
+function Metric({ icon: Icon, label, value, note, tone = "" }: { icon: typeof Users; label: string; value: string; note: string; tone?: string }) {
   return <article className="metric-card"><div className="metric-top"><span>{label}</span><span className={`metric-icon ${tone}`}><Icon size={15} /></span></div><div className="metric-value">{value}</div><div className="metric-note">{note}</div></article>;
 }
 
 function TeacherRow({ teacher, onOpen }: { teacher: Teacher; onOpen: (teacher: Teacher) => void }) {
-  return (
-    <div className="teacher-row">
-      <div className="teacher"><div className="teacher-avatar">{initials(teacher.name)}</div><div><strong>{teacher.name}</strong><span>{teacher.career}</span></div></div>
-      <div className="row-meta"><span className={`badge ${statusClass(teacher.status)}`}>{teacher.status}</span><span>{teacher.currentHito}</span></div>
-      <div className="progress-cell"><span className="row-meta">{teacher.progress}% completado</span><div className="mini-progress"><span style={{ width: `${teacher.progress}%` }} /></div></div>
-      <button className="row-action" aria-label={`Abrir ${teacher.name}`} onClick={() => onOpen(teacher)}><ChevronRight size={15} /></button>
-    </div>
-  );
+  return <div className="teacher-row"><div className="teacher"><div className="teacher-avatar">{initials(teacher.name)}</div><div><strong>{teacher.name}</strong><span>{teacher.career}</span><span className="teacher-id-inline">{teacher.nationalId || "Sin cédula vinculada"}</span></div></div><div className="row-meta"><span className={`badge ${statusClass(teacher.status)}`}>{teacher.status}</span><span>{teacher.currentHito}</span></div><div className="progress-cell"><span className="row-meta">{teacher.progress}% completado</span><div className="mini-progress"><span style={{ width: `${teacher.progress}%` }} /></div></div><button className="row-action" aria-label={`Abrir ${teacher.name}`} onClick={() => onOpen(teacher)}><ChevronRight size={15} /></button></div>;
 }
 
-function TeachersPanel({ teachers, careers, canCreate, onNew, onOpen }: {
-  teachers: Teacher[];
-  careers: CatalogOption[];
-  canCreate: boolean;
-  onNew: () => void;
-  onOpen: (teacher: Teacher) => void;
-}) {
+function TeachersPanel({ teachers, careers, canCreate, onNew, onOpen, onEditMaster }: { teachers: Teacher[]; careers: CatalogOption[]; canCreate: boolean; onNew: () => void; onOpen: (teacher: Teacher) => void; onEditMaster: (teacher: Teacher) => void }) {
   const [query, setQuery] = useState("");
   const [career, setCareer] = useState("");
   const [period, setPeriod] = useState("");
   const periods = [...new Set(teachers.map((teacher) => teacher.period))];
-  const filtered = useMemo(
-    () => teachers.filter((teacher) => {
-      const matches = `${teacher.name} ${teacher.career} ${teacher.subject}`.toLowerCase().includes(query.toLowerCase());
-      return matches && (!career || teacher.careerId === career) && (!period || teacher.period === period);
-    }),
-    [teachers, query, career, period],
-  );
+  const filtered = useMemo(() => teachers.filter((teacher) => {
+    const matches = `${teacher.nationalId} ${teacher.name} ${teacher.career} ${teacher.subject}`.toLowerCase().includes(query.toLowerCase());
+    return matches && (!career || teacher.careerId === career) && (!period || teacher.period === period);
+  }), [teachers, query, career, period]);
 
-  return (
-    <section className="section-card">
-      <div className="toolbar">
-        <div className="search"><Search size={15} /><input placeholder="Buscar docente, carrera o asignatura" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-        <div className="filters">
-          <select className="select" value={career} onChange={(event) => setCareer(event.target.value)}><option value="">Todas las carreras</option>{careers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-          <select className="select" value={period} onChange={(event) => setPeriod(event.target.value)}><option value="">Todos los períodos</option>{periods.map((item) => <option key={item}>{item}</option>)}</select>
-          {canCreate && <button className="primary-button" onClick={onNew}><Plus size={14} />Registrar docente</button>}
-        </div>
-      </div>
-      {filtered.length ? (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead><tr><th>Docente</th><th>Carrera / asignatura</th><th>Período</th><th>Hito</th><th>Avance</th><th>Brechas</th><th></th></tr></thead>
-            <tbody>
-              {filtered.map((teacher) => (
-                <tr key={teacher.id}>
-                  <td><strong>{teacher.name}</strong><span className="row-meta">{teacher.email || "Sin correo"}</span></td>
-                  <td>{teacher.career}<span className="row-meta">{teacher.subject}</span></td>
-                  <td>{teacher.period}</td><td>{teacher.currentHito}</td><td>{teacher.progress}%</td>
-                  <td><span className={`badge ${teacher.criticalGaps ? "red" : "green"}`}>{teacher.criticalGaps}</span></td>
-                  <td><button className="secondary-button" onClick={() => onOpen(teacher)}>Expediente <ChevronRight size={13} /></button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : <div className="empty-state"><h3>Sin resultados</h3><p>No hay docentes con esos filtros.</p></div>}
-    </section>
-  );
+  return <section className="section-card"><div className="toolbar"><div className="search"><Search size={15} /><input placeholder="Buscar cédula, docente, carrera o asignatura" value={query} onChange={(event) => setQuery(event.target.value)} /></div><div className="filters"><select className="select" value={career} onChange={(event) => setCareer(event.target.value)}><option value="">Todas las carreras</option>{careers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select className="select" value={period} onChange={(event) => setPeriod(event.target.value)}><option value="">Todos los períodos</option>{periods.map((item) => <option key={item}>{item}</option>)}</select>{canCreate && <button className="primary-button" onClick={onNew}><Plus size={14} />Registrar docente</button>}</div></div>{filtered.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Cédula</th><th>Docente</th><th>Carrera / asignatura</th><th>Período</th><th>Hito</th><th>Avance</th><th>Brechas</th><th>Acciones</th></tr></thead><tbody>{filtered.map((teacher) => <tr key={teacher.id}><td className="teacher-id-cell">{teacher.nationalId || "Pendiente"}</td><td><strong>{teacher.name}</strong><span className="row-meta">{teacher.email || "Sin correo"}</span></td><td>{teacher.career}<span className="row-meta">{teacher.subject}</span></td><td>{teacher.period}</td><td>{teacher.currentHito}</td><td>{teacher.progress}%</td><td><span className={`badge ${teacher.criticalGaps ? "red" : "green"}`}>{teacher.criticalGaps}</span></td><td><div className="filters"><button className="ghost-button" onClick={() => onEditMaster(teacher)}>Datos</button><button className="secondary-button" onClick={() => onOpen(teacher)}>Expediente <ChevronRight size={13} /></button></div></td></tr>)}</tbody></table></div> : <div className="empty-state"><h3>Sin resultados</h3><p>No hay docentes con esos filtros.</p></div>}</section>;
 }
 
 function ScheduleOverview({ teachers, onOpen }: { teachers: Teacher[]; onOpen: (teacher: Teacher) => void }) {
-  return (
-    <section className="section-card">
-      <div className="panel-head"><div><h3>Avance de H1–H6</h3><p>La programación detallada se edita dentro de cada expediente.</p></div></div>
-      {teachers.length ? (
-        <div className="table-scroll"><table className="data-table"><thead><tr><th>Docente</th><th>Carrera</th><th>Hitos ejecutados</th><th>Hito actual</th><th>Avance</th><th></th></tr></thead><tbody>{teachers.map((teacher) => <tr key={teacher.id}><td><strong>{teacher.name}</strong></td><td>{teacher.career}</td><td>{teacher.hitosExecuted}/6</td><td>{teacher.currentHito}</td><td>{teacher.progress}%</td><td><button className="secondary-button" onClick={() => onOpen(teacher)}>Programar</button></td></tr>)}</tbody></table></div>
-      ) : <div className="empty-state"><p>No existen expedientes.</p></div>}
-    </section>
-  );
+  return <section className="section-card"><div className="panel-head"><div><h3>Avance de H1–H6</h3><p>La programación detallada se edita dentro de cada expediente.</p></div></div>{teachers.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Cédula</th><th>Docente</th><th>Carrera</th><th>Hitos ejecutados</th><th>Hito actual</th><th>Avance</th><th></th></tr></thead><tbody>{teachers.map((teacher) => <tr key={teacher.id}><td className="teacher-id-cell">{teacher.nationalId || "Pendiente"}</td><td><strong>{teacher.name}</strong></td><td>{teacher.career}</td><td>{teacher.hitosExecuted}/6</td><td>{teacher.currentHito}</td><td>{teacher.progress}%</td><td><button className="secondary-button" onClick={() => onOpen(teacher)}>Programar</button></td></tr>)}</tbody></table></div> : <div className="empty-state"><p>No existen expedientes.</p></div>}</section>;
 }
 
 function Reports({ teachers }: { teachers: Teacher[] }) {
   const certified = teachers.filter((teacher) => teacher.status === "Certificado").length;
   const gaps = teachers.reduce((sum, teacher) => sum + teacher.criticalGaps, 0);
   const average = teachers.length ? Math.round(teachers.reduce((sum, teacher) => sum + teacher.progress, 0) / teachers.length) : 0;
-  return (
-    <>
-      <div className="metric-grid"><Metric icon={Users} label="Docentes" value={String(teachers.length)} note="Expedientes visibles" /><Metric icon={Clock3} label="Avance" value={`${average}%`} note="Promedio de H1–H6" tone="gold" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Criterios evaluados < 3" tone="red" /><Metric icon={ShieldCheck} label="Certificados" value={String(certified)} note="Procesos finalizados" tone="blue" /></div>
-      <section className="section-card"><div className="panel-head"><div><h3>Avance por docente</h3><p>Información del expediente</p></div></div>{teachers.map((teacher) => <div className="teacher-row" key={teacher.id}><strong>{teacher.name}</strong><span className="row-meta">{teacher.currentHito}</span><div className="progress-cell"><div className="mini-progress"><span style={{ width: `${teacher.progress}%` }} /></div></div><span className={`badge ${statusClass(teacher.status)}`}>{teacher.progress}%</span></div>)}</section>
-    </>
-  );
+  return <><div className="metric-grid"><Metric icon={Users} label="Docentes" value={String(teachers.length)} note="Expedientes visibles" /><Metric icon={Clock3} label="Avance" value={`${average}%`} note="Promedio de H1–H6" tone="gold" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Criterios evaluados < 3" tone="red" /><Metric icon={ShieldCheck} label="Certificados" value={String(certified)} note="Procesos finalizados" tone="blue" /></div><section className="section-card"><div className="panel-head"><div><h3>Avance por docente</h3><p>Información del expediente</p></div></div>{teachers.map((teacher) => <div className="teacher-row" key={teacher.id}><strong>{teacher.name}</strong><span className="row-meta">{teacher.nationalId || "Sin cédula"} · {teacher.currentHito}</span><div className="progress-cell"><div className="mini-progress"><span style={{ width: `${teacher.progress}%` }} /></div></div><span className={`badge ${statusClass(teacher.status)}`}>{teacher.progress}%</span></div>)}</section></>;
 }
 
-function CoordinatorsPanel({ coordinators, onNew, onEdit, onManage, onToggle }: {
-  coordinators: StaffMember[];
-  onNew: () => void;
-  onEdit: (coordinator: StaffMember) => void;
-  onManage: (coordinator: StaffMember) => void;
-  onToggle: (coordinator: StaffMember) => void;
-}) {
-  return (
-    <section className="section-card">
-      <div className="toolbar">
-        <div><h3>Coordinadores</h3><p className="subtitle">Cree coordinadores y gestione posteriormente las carreras asignadas a cada uno.</p></div>
-        <button className="primary-button" onClick={onNew}><Plus size={14} />Nuevo coordinador</button>
-      </div>
-      <div className="table-scroll">
-        <table className="data-table">
-          <thead><tr><th>Coordinador</th><th>Carreras asignadas</th><th>Estado</th><th>Acciones</th></tr></thead>
-          <tbody>
-            {coordinators.map((coordinator) => (
-              <tr key={coordinator.id}>
-                <td><strong>{coordinator.full_name}</strong></td>
-                <td>
-                  <strong>{coordinator.careerIds.length ? `${coordinator.careerIds.length} carrera${coordinator.careerIds.length === 1 ? "" : "s"}` : "Sin carreras"}</strong>
-                  <span className="row-meta">{coordinator.careerIds.length ? "Asignadas en el módulo de carreras" : "Requiere asignación"}</span>
-                </td>
-                <td><span className={`badge ${coordinator.active ? "green" : "gray"}`}>{coordinator.active ? "Activo" : "Inactivo"}</span></td>
-                <td>
-                  <div className="filters">
-                    <button className="secondary-button" onClick={() => onManage(coordinator)}>{coordinator.careerIds.length ? "Carreras" : "Asignar carreras"}</button>
-                    <button className="secondary-button" onClick={() => onEdit(coordinator)}>Editar</button>
-                    <button className="ghost-button" onClick={() => onToggle(coordinator)}>{coordinator.active ? "Desactivar" : "Activar"}</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {!coordinators.length && <div className="empty-state"><h3>Sin coordinadores</h3><p>Cree el primer coordinador para iniciar la distribución de carreras.</p></div>}
-    </section>
-  );
+function CoordinatorsPanel({ coordinators, onNew, onEdit, onManage, onToggle }: { coordinators: StaffMember[]; onNew: () => void; onEdit: (coordinator: StaffMember) => void; onManage: (coordinator: StaffMember) => void; onToggle: (coordinator: StaffMember) => void }) {
+  return <section className="section-card"><div className="toolbar"><div><h3>Coordinadores</h3><p className="subtitle">Cree coordinadores y gestione posteriormente las carreras asignadas a cada uno.</p></div><button className="primary-button" onClick={onNew}><Plus size={14} />Nuevo coordinador</button></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Coordinador</th><th>Carreras asignadas</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{coordinators.map((coordinator) => <tr key={coordinator.id}><td><strong>{coordinator.full_name}</strong></td><td><strong>{coordinator.careerIds.length ? `${coordinator.careerIds.length} carrera${coordinator.careerIds.length === 1 ? "" : "s"}` : "Sin carreras"}</strong><span className="row-meta">{coordinator.careerIds.length ? "Asignadas en el módulo de carreras" : "Requiere asignación"}</span></td><td><span className={`badge ${coordinator.active ? "green" : "gray"}`}>{coordinator.active ? "Activo" : "Inactivo"}</span></td><td><div className="filters"><button className="secondary-button" onClick={() => onManage(coordinator)}>{coordinator.careerIds.length ? "Carreras" : "Asignar carreras"}</button><button className="secondary-button" onClick={() => onEdit(coordinator)}>Editar</button><button className="ghost-button" onClick={() => onToggle(coordinator)}>{coordinator.active ? "Desactivar" : "Activar"}</button></div></td></tr>)}</tbody></table></div>{!coordinators.length && <div className="empty-state"><h3>Sin coordinadores</h3><p>Cree el primer coordinador para iniciar la distribución de carreras.</p></div>}</section>;
 }
 
 function CatalogSummary({ careers, periods, staff }: { careers: CatalogOption[]; periods: AcademicPeriod[]; staff: StaffMember[] }) {
   return <div className="metric-grid"><Metric icon={Settings} label="Carreras activas" value={String(careers.length)} note="Catálogo institucional" /><Metric icon={CalendarDays} label="Períodos activos" value={String(periods.length)} note={periods[0]?.name ?? "Sin períodos"} tone="gold" /><Metric icon={UserCog} label="Coordinadores" value={String(staff.filter((item) => item.role === "coordinator" && item.active).length)} note="Activos" tone="blue" /><Metric icon={FolderOpen} label="Criterios operativos" value="75" note="H1–H6" tone="red" /></div>;
 }
 
-function TeacherModal({ careers, periods, coordinatorName, onClose, onSave }: {
-  careers: CatalogOption[];
-  periods: AcademicPeriod[];
-  coordinatorName: string;
-  onClose: () => void;
-  onSave: (input: NewTeacherInput) => Promise<void>;
-}) {
-  const [schedules, setSchedules] = useState<ScheduleRange[]>([{ startTime: "", endTime: "" }]);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (schedules.some((schedule) => !schedule.startTime || !schedule.endTime || schedule.endTime <= schedule.startTime)) {
-      window.alert("Revise las jornadas.");
-      return;
-    }
-    const form = new FormData(event.currentTarget);
-    void onSave({
-      name: String(form.get("name") ?? ""),
-      careerId: String(form.get("careerId") ?? ""),
-      periodId: String(form.get("periodId") ?? ""),
-      subject: String(form.get("subject") ?? ""),
-      modality: String(form.get("modality") ?? ""),
-      entryDate: String(form.get("entryDate") ?? ""),
-      activitiesStartDate: String(form.get("activitiesStartDate") ?? ""),
-      plannedCloseDate: String(form.get("plannedCloseDate") ?? ""),
-      schedules,
-      email: String(form.get("email") ?? ""),
-      teams: String(form.get("teams") ?? ""),
-      telegram: String(form.get("telegram") ?? ""),
-    });
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <div className="modal" role="dialog" aria-modal="true">
-        <div className="modal-head"><div><h2>Registrar docente nuevo</h2><p className="subtitle">Coordinador: {coordinatorName}</p></div><button className="icon-button" onClick={onClose}><X size={17} /></button></div>
-        <form className="modal-body form-grid" onSubmit={submit}>
-          <div className="field full"><label>Nombres y apellidos</label><input name="name" required /></div>
-          <div className="field"><label>Carrera</label><select name="careerId" required disabled={!careers.length}><option value="">{careers.length ? "Seleccione una carrera" : "No tiene carreras asignadas"}</option>{careers.map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""}</option>)}</select></div>
-          <div className="field"><label>Asignatura(s)</label><input name="subject" required /></div>
-          <div className="field"><label>Modalidad</label><select name="modality"><option>Presencial</option><option>Híbrida</option><option>Online</option><option>Intensiva</option></select></div>
-          <div className="field"><label>Período académico</label><select name="periodId" required><option value="">Seleccione un período</option>{periods.map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}</select></div>
-          <div className="field"><label>Fecha de ingreso</label><input type="date" name="entryDate" required /></div>
-          <div className="field"><label>Inicio de actividades</label><input type="date" name="activitiesStartDate" required /></div>
-          <div className="field full"><label>Fecha prevista de cierre</label><input type="date" name="plannedCloseDate" /></div>
-          <div className="field full">
-            <label>Jornadas / horarios</label>
-            <div className="schedule-editor">
-              {schedules.map((schedule, index) => (
-                <div className="schedule-range" key={index}>
-                  <strong>Jornada {index + 1}</strong>
-                  <div className="field"><label>Desde</label><input type="time" required value={schedule.startTime} onChange={(event) => setSchedules((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, startTime: event.target.value } : row))} /></div>
-                  <div className="schedule-separator">a</div>
-                  <div className="field"><label>Hasta</label><input type="time" required value={schedule.endTime} onChange={(event) => setSchedules((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, endTime: event.target.value } : row))} /></div>
-                  <button type="button" className="icon-button schedule-remove" disabled={schedules.length === 1} onClick={() => setSchedules((current) => current.filter((_, rowIndex) => rowIndex !== index))}><X size={15} /></button>
-                </div>
-              ))}
-              <button type="button" className="secondary-button schedule-add" onClick={() => setSchedules((current) => [...current, { startTime: "", endTime: "" }])}><Plus size={14} />Agregar otra jornada</button>
-            </div>
-          </div>
-          <div className="field"><label>Correo institucional</label><input type="email" name="email" /></div>
-          <div className="field"><label>Código Teams</label><input name="teams" /></div>
-          <div className="field full"><label>Enlace Telegram</label><input type="url" name="telegram" /></div>
-          {!careers.length && <div className="field full"><div className="error-note">Este coordinador no tiene carreras asignadas. El administrador debe asignarlas antes de registrar docentes.</div></div>}
-          <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={!careers.length || !periods.length}><Plus size={14} />Guardar</button></div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function CoordinatorModal({ coordinator, onClose, onSave }: {
-  coordinator: StaffMember | null;
-  onClose: () => void;
-  onSave: (input: CoordinatorInput) => Promise<void>;
-}) {
+function CoordinatorModal({ coordinator, onClose, onSave }: { coordinator: StaffMember | null; onClose: () => void; onSave: (input: CoordinatorInput) => Promise<void> }) {
   const [active, setActive] = useState(coordinator?.active ?? true);
-
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void onSave({
-      id: coordinator?.id,
-      name: String(form.get("name") ?? ""),
-      active,
-    });
+    void onSave({ id: coordinator?.id, name: String(form.get("name") ?? ""), active });
   }
-
-  return (
-    <div className="modal-backdrop">
-      <div className="modal coordinator-simple-modal" role="dialog" aria-modal="true">
-        <div className="modal-head"><div><h2>{coordinator ? "Editar coordinador" : "Nuevo coordinador"}</h2><p className="subtitle">Las carreras se administran en el apartado Asignación de carreras.</p></div><button className="icon-button" onClick={onClose}><X size={17} /></button></div>
-        <form className="modal-body form-grid" onSubmit={submit}>
-          <div className="field full"><label>Nombre completo</label><input name="name" required defaultValue={coordinator?.full_name ?? ""} /></div>
-          <div className="field full coordinator-active-field"><label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /><span><strong>Coordinador activo</strong><small>Puede ingresar y gestionar sus docentes.</small></span></label></div>
-          <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button">Guardar</button></div>
-        </form>
-      </div>
-    </div>
-  );
+  return <div className="modal-backdrop"><div className="modal coordinator-simple-modal" role="dialog" aria-modal="true"><div className="modal-head"><div><h2>{coordinator ? "Editar coordinador" : "Nuevo coordinador"}</h2><p className="subtitle">Las carreras se administran en el apartado Asignación de carreras.</p></div><button className="icon-button" onClick={onClose}><X size={17} /></button></div><form className="modal-body form-grid" onSubmit={submit}><div className="field full"><label>Nombre completo</label><input name="name" required defaultValue={coordinator?.full_name ?? ""} /></div><div className="field full coordinator-active-field"><label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /><span><strong>Coordinador activo</strong><small>Puede ingresar y gestionar sus docentes.</small></span></label></div><div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="primary-button">Guardar</button></div></form></div></div>;
 }
