@@ -9,6 +9,7 @@ const eslintConfig = defineConfig([
     files: [
       "app/siacd-app-v3.tsx",
       "app/expedient-workspace.tsx",
+      "app/expedient-workspace-v4.tsx",
       "app/expedient-finalization.tsx",
       "app/teacher-master-modal.tsx",
       "app/teacher-portal.tsx",
@@ -21,6 +22,7 @@ const eslintConfig = defineConfig([
   {
     files: [
       "app/expedient-workspace.tsx",
+      "app/expedient-workspace-v4.tsx",
       "app/expedient-finalization.tsx",
     ],
     rules: {
