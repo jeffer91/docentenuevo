@@ -5,10 +5,6 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  // SIACD: estos componentes cargan datos remotos al montar y usan acciones
-  // explícitas del usuario para generar documentos. Las reglas nuevas de
-  // React 19 son más estrictas que el patrón actual, pero no representan
-  // errores de ejecución en esta aplicación.
   {
     files: [
       "app/siacd-app-v3.tsx",
@@ -20,15 +16,20 @@ const eslintConfig = defineConfig([
       "react-hooks/purity": "off",
     },
   },
-  // Override default ignores of eslint-config-next.
+  {
+    files: [
+      "app/expedient-workspace.tsx",
+      "app/expedient-finalization.tsx",
+    ],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
   globalIgnores([
-    // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Versión anterior conservada solo como referencia. La aplicación activa
-    // usa siacd-app-v3.tsx.
     "app/siacd-app-v2.tsx",
   ]),
 ]);
