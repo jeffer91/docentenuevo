@@ -11,8 +11,13 @@ const eslintConfig = defineConfig([
       "app/expedient-workspace.tsx",
       "app/expedient-workspace-v4.tsx",
       "app/expedient-finalization.tsx",
+      "app/expedient-finalization-legacy.tsx",
       "app/teacher-master-modal.tsx",
       "app/teacher-portal.tsx",
+      "app/teacher-portal-legacy.tsx",
+      "app/teacher-evidence-hub.tsx",
+      "app/teacher-evidence-panel.tsx",
+      "app/evidence-review-workspace.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
@@ -24,6 +29,7 @@ const eslintConfig = defineConfig([
       "app/expedient-workspace.tsx",
       "app/expedient-workspace-v4.tsx",
       "app/expedient-finalization.tsx",
+      "app/expedient-finalization-legacy.tsx",
     ],
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
