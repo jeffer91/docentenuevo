@@ -38,7 +38,7 @@ function normalizeCedula(value: unknown) {
 
 function normalizeEmail(value: unknown) {
   if (typeof value !== "string") return "";
-  return value.trim().toLowerCase();
+  return value.trim().toLowerCase().replace("@itsqmet.edu.edu.ec", "@itsqmet.edu.ec");
 }
 
 function validEmail(email: string) {
@@ -112,8 +112,6 @@ Deno.serve(async (req: Request) => {
 
   if (teacherByCedula?.id) teacher = teacherByCedula as TeacherRow;
 
-  // Compatibilidad con docentes creados antes de guardar national_id en Supabase.
-  // Si Firebase contiene la cédula, se intenta vincular por nombre exacto normalizado y se guarda la cédula en Supabase.
   if (!teacher) {
     try {
       const directoryResponse = await fetch(
@@ -129,8 +127,13 @@ Deno.serve(async (req: Request) => {
             .eq("active", true);
           const matches = ((candidates ?? []) as TeacherRow[])
             .filter((candidate) => normalizeName(candidate.full_name) === directoryName);
-          if (matches.length === 1) {
-            const match = matches[0];
+          const institutionalMatches = matches.filter((candidate) => normalizeEmail(candidate.institutional_email).includes("@itsqmet."));
+          const match = institutionalMatches.length === 1
+            ? institutionalMatches[0]
+            : matches.length === 1
+              ? matches[0]
+              : null;
+          if (match) {
             const { error: backfillError } = await supabase
               .from("teachers")
               .update({ national_id: cedula, updated_at: new Date().toISOString() })
@@ -141,7 +144,6 @@ Deno.serve(async (req: Request) => {
         }
       }
     } catch {
-      // Si Firebase no responde, no se revela información y se mantiene la respuesta genérica.
     }
   }
 
