@@ -5,7 +5,7 @@ import "./admin-career-manager.css";
 import "./teacher-directory.css";
 import AccessLanding from "./access-landing";
 import AdminShell from "./admin-shell";
-import SiacdApp from "./siacd-app-v6";
+import SiacdApp from "./siacd-app";
 import TeacherPortal from "./teacher-portal";
 
 const container = document.getElementById("root");
