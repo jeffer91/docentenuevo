@@ -1,128 +1,134 @@
 # SIACD · Acompañamiento Docente
 
-Aplicación web institucional para gestionar el acompañamiento completo a docentes nuevos: inducción por áreas, preparación previa, seguimiento durante la docencia, cierre, evidencias, revisiones e informes PDF.
+Aplicación web institucional para gestionar el acompañamiento de docentes nuevos: inducción por áreas, preparación previa, seguimiento durante la docencia, cierre, evidencias, revisiones e informes PDF.
 
-## Accesos
+## Accesos públicos
 
-- **Coordinador:** `/coordinador/`. Selecciona su nombre y ve únicamente las carreras y docentes que tiene asignados.
-- **Administrador:** `/administrador/` con clave institucional. Gestiona coordinadores, carreras, docentes, estadísticas y catálogos.
-- **Docente:** `/docente/`. Accede con correo/cédula según el flujo vigente y mantiene su sesión de dispositivo mientras sea válida.
-- **Aprobador:** estructura preparada para una fase posterior, actualmente no expuesta como acceso principal.
+La portada general `/` presenta tres accesos independientes:
 
-## Organización del acompañamiento
+- **Docentes:** `/docente/`. Primer ingreso y accesos posteriores mediante cédula + PIN; la sesión queda asociada al dispositivo y se revoca al cerrar sesión.
+- **Coordinadores:** `/coordinador/`. Visualiza las carreras y expedientes vinculados al coordinador seleccionado.
+- **Administrador:** `/administrador/`. Gestiona coordinadores, carreras, docentes, expedientes, estadísticas y catálogos.
 
-La navegación operativa del expediente es:
+## Modelo operativo vigente
 
-**Resumen | Áreas | Antes | Durante | Después | Informes | Historial**
+La fuente operativa actual es `public.competency_definitions` con **129 criterios activos** organizados en cuatro etapas:
 
-Los H1–H6 se conservan únicamente como claves técnicas para mantener compatibilidad con los expedientes y tablas existentes:
+- **Áreas:** H1. Talento, Software, Calidad y Bienestar Estudiantil.
+- **Antes:** H2. Coordinador, Teams, Telegram, PEA, Adaptaciones, EVA y SISACAD.
+- **Durante:** H3 + H4 + H5. General, Adaptaciones, Presentaciones, Unidades 1–4 y Observación de clase.
+- **Después:** H6. Cierre, supletorios e informes finales.
 
-- **Áreas:** H1. Inducción institucional por Talento, Software, Calidad y Bienestar Estudiantil.
-- **Antes:** H2. Preparación del docente antes del inicio de la asignatura.
-- **Durante:** H3 + H4 + H5. Seguimiento general, adaptaciones, presentaciones, Unidades 1–4 y observación de clase.
-- **Después:** H6. Supletorios e informes finales.
+H1–H6 se conservan como claves técnicas de compatibilidad. La interfaz institucional trabaja con **Áreas → Antes → Durante → Después**.
 
-El avance y el cumplimiento se calculan de forma dinámica a partir de los criterios activos. Los criterios marcados como **No aplica** cuentan como resueltos para el avance, pero no afectan el porcentaje de cumplimiento.
+El avance se calcula con criterios resueltos. Un criterio marcado **No aplica** cuenta como resuelto para el avance y no interviene en el porcentaje de cumplimiento. El cumplimiento se calcula únicamente con criterios evaluados aplicables.
 
-## Catálogo institucional vigente
+Los 75 criterios del catálogo anterior permanecen inactivos para preservar trazabilidad; no forman parte del cálculo vigente.
 
-La migración `20260820110000_new_accompaniment_structure.sql` carga el catálogo derivado de `organización(2).xlsx` y corrige redacción y duplicaciones funcionales.
+## Revisiones
 
-El catálogo vigente contiene 129 criterios distribuidos entre:
+`competency_scores` conserva el estado vigente de los 129 criterios y `review_cycles` / `review_results` mantienen revisiones repetibles sin sobrescribir ciclos anteriores.
 
-- Áreas: Talento, Software, Calidad y Bienestar Estudiantil.
-- Antes: Coordinador, Teams, Telegram, PEA, Adaptaciones, EVA y SISACAD.
-- Durante: General, Adaptaciones, Presentaciones, Unidad 1, Unidad 2, Unidad 3, Unidad 4 y Observación de clase.
-- Después: Cierre.
-
-El catálogo anterior no se elimina: queda inactivo para preservar trazabilidad histórica.
+Las revisiones creadas con catálogos anteriores permanecen visibles como **históricas**, pero no alteran el último resultado, la tendencia ni los indicadores del modelo activo.
 
 ## Informes PDF
 
-Cada expediente puede generar cinco informes oficiales:
+Cada expediente genera cinco documentos:
 
-1. **Informe de Áreas**.
-2. **Informe Antes**.
-3. **Informe Durante**.
-4. **Informe Después**.
-5. **Informe Consolidado**.
+1. Informe de Áreas.
+2. Informe Antes.
+3. Informe Durante.
+4. Informe Después.
+5. Informe Consolidado.
 
-Los cuatro informes de etapa contienen el detalle de sus criterios, evaluaciones y observaciones. El consolidado presenta el resultado global, estado de cada etapa, brechas y narrativas de fortalezas/conclusiones cuando existen.
-
-Si aún existen criterios pendientes, el consolidado se genera identificado como **BORRADOR**. Los documentos se descargan en PDF y, cuando Supabase Storage está disponible, quedan registrados en `generated_documents` con código de verificación y versión visible en el nombre/observación.
-
-## Revisión repetible
-
-Las revisiones continúan funcionando como ciclos independientes, sin sobrescribir resultados anteriores. `competency_scores` conserva el estado vigente y el módulo de Revisiones conserva el historial de revisiones/correcciones.
+Un informe de etapa se identifica como **BORRADOR** mientras su etapa tenga criterios pendientes. El Consolidado es borrador mientras exista cualquier etapa incompleta. Los documentos pueden registrarse en `generated_documents`, con versión, código de verificación y archivo en Supabase Storage.
 
 ## Evidencias
 
-Las evidencias permanecen almacenadas en Supabase Storage y vinculadas al expediente/H1–H6. Como H1–H6 ahora representan las cuatro etapas funcionales, las evidencias se contabilizan automáticamente en Áreas, Antes, Durante o Después.
+El coordinador/administrador trabaja con el expediente institucional y el docente dispone de un flujo específico de evidencias solicitadas. Los buckets actuales son privados y separan archivos generales del expediente y entregas del portal docente.
 
-## Directorio de docentes
+## Datos del docente
 
-SIACD vincula docentes por cédula con Firebase Realtime Database y utiliza Supabase como fuente del expediente institucional.
+Supabase es la fuente del expediente institucional. `public.teachers` conserva la identidad del docente y un mismo docente puede tener varios expedientes por carrera, asignatura o período.
 
-- La cédula se normaliza a 10 dígitos.
-- Un docente se conserva una sola vez en `public.teachers` mediante `national_id` único y puede tener varios expedientes.
-- Firebase conserva información compartida del directorio.
-- Supabase conserva expedientes, evaluaciones, revisiones, evidencias y documentos.
+Firebase Realtime Database se mantiene como directorio compartido/auxiliar para precarga y sincronización de información común. La cédula se normaliza a 10 dígitos y es la clave principal para reconciliar la identidad entre ambos orígenes.
 
-## Tecnología y publicación
+## Tecnología
 
-- React 19 y TypeScript.
-- Supabase Postgres y Storage.
-- Firebase Realtime Database para el directorio compartido.
-- Vite para el artefacto estático publicado.
-- jsPDF para los cinco informes PDF.
+La aplicación publicada es un artefacto estático construido con:
 
-La publicación institucional se realiza con:
+- React 19 + TypeScript.
+- Vite.
+- Supabase Postgres, RPC/Edge Functions y Storage.
+- Firebase Realtime Database como directorio auxiliar.
+- jsPDF para informes.
+- Cloudflare Pages para publicación institucional.
+
+El runtime de producción no depende de Next App Router, Vinext, D1 ni Drizzle.
+
+## Desarrollo y validación
+
+```bash
+npm ci
+npm run dev
+npm run lint
+npm run build:pages
+npm test
+```
+
+Los smoke tests verifican que el artefacto generado contenga las cuatro rutas públicas, los tres accesos de la portada y la organización Áreas/Antes/Durante/Después.
+
+GitHub Actions valida los cambios y `main`; no realiza un segundo despliegue público. La publicación institucional se hace en Cloudflare Pages.
+
+## Publicación
+
+En Windows:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\PUBLICAR_EN_CLOUDFLARE.ps1
 ```
 
+El script usa `npm ci`, valida lint, genera `pages-dist`, ejecuta las pruebas y solo entonces publica en el proyecto Cloudflare Pages `docentenuevo`.
+
 ## Base de datos
 
-Las migraciones oficiales están en `supabase/migrations/`.
-
-Para habilitar la nueva organización es indispensable aplicar:
+Las migraciones oficiales están en `supabase/migrations/`. Las principales de la organización actual son:
 
 ```text
 20260820110000_new_accompaniment_structure.sql
+20260820111500_teacher_portal_areas.sql
+20260820112000_dynamic_accompaniment_progress.sql
+20260820170000_unify_active_model.sql
+20260820190000_separate_current_and_historical_reviews.sql
 ```
 
-Esta migración:
+El historial de migraciones no debe reescribirse. Las correcciones nuevas se realizan mediante migraciones adicionales.
 
-- agrega la fase `areas`;
-- reclasifica H1–H6;
-- conserva el catálogo anterior como inactivo;
-- carga los 129 criterios de la nueva organización;
-- mantiene los seis hitos técnicos en expedientes ya existentes.
-
-## Estructura principal
+## Estructura activa
 
 ```text
 app/
-  administrador/
-  coordinador/
-  docente/
-  expedient-workspace.tsx          Entrada activa
-  expedient-workspace-v5.tsx       Integra expediente + Revisiones
-  expedient-workspace-v6.tsx       Nueva organización y 5 informes PDF
-  expedient-workspace-v6.module.css
+  access-landing.tsx
+  static-main.tsx
+  siacd-app-v3.tsx
+  siacd-app-v6.tsx
+  admin-shell.tsx
+  expedient-workspace.tsx
+  expedient-workspace-v5.tsx
+  expedient-workspace-v6.tsx
   review-cycle-workspace.tsx
   evidence-review-workspace.tsx
   teacher-portal.tsx
+  teacher-process-portal.tsx
   lib/
-supabase/migrations/
+pages/
+  index.html
+  docente/index.html
+  coordinador/index.html
+  administrador/index.html
+supabase/
+  functions/
+  migrations/
 ```
 
-Las versiones anteriores del expediente se conservan como referencia histórica y compatibilidad, pero la entrada activa utiliza V6 a través de V5.
-
-
-## Modelo activo de acompañamiento
-
-La fuente operativa vigente es el catálogo activo organizado en **Áreas → Antes → Durante → Después**. Los conteos son dinámicos y actualmente corresponden a 129 criterios activos. Las tablas y componentes de modelos anteriores se conservan únicamente para trazabilidad histórica y no participan en el cálculo institucional activo.
-
-Los cinco informes oficiales son: **Informe de Áreas, Informe Antes, Informe Durante, Informe Después e Informe Consolidado**. Cada informe se genera como **BORRADOR** mientras su etapa correspondiente tenga criterios pendientes; el Consolidado es borrador mientras exista cualquier etapa incompleta.
+Las versiones que ya no participaban en el runtime y los archivos del starter (Next/Vinext/D1/Drizzle) fueron retirados del árbol fuente para evitar mantener arquitecturas paralelas.
