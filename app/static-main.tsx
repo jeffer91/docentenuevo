@@ -7,6 +7,7 @@ import AccessLanding from "./access-landing";
 import AdminShell from "./admin-shell";
 import SiacdApp from "./siacd-app";
 import TeacherPortal from "./teacher-portal";
+import UiLanguageSanitizer from "./ui-language-sanitizer";
 
 const container = document.getElementById("root");
 
@@ -23,6 +24,7 @@ const app = pathname.includes("/administrador")
 
 createRoot(container).render(
   <React.StrictMode>
+    <UiLanguageSanitizer />
     {app}
   </React.StrictMode>,
 );

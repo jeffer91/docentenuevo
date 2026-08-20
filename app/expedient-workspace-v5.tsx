@@ -1,11 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ClipboardCheck } from "lucide-react";
-import ExpedientWorkspaceV7 from "./expedient-workspace-v7";
-import ReviewCycleWorkspace from "./review-cycle-workspace";
+import ExpedientWorkspaceV8 from "./expedient-workspace-v8";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
-import styles from "./review-cycle-launcher.module.css";
 
 type Props = {
   teacher: Teacher;
@@ -15,21 +11,10 @@ type Props = {
   onChanged: () => Promise<void> | void;
 };
 
+/**
+ * Flujo único vigente: Áreas / Antes / Durante / Después, evaluación integrada
+ * e informes institucionales con las evidencias finales aprobadas.
+ */
 export default function ExpedientWorkspaceV5(props: Props) {
-  const [showReviews, setShowReviews] = useState(false);
-
-  return <>
-    <ExpedientWorkspaceV7 {...props} />
-    <button className={styles.launcher} onClick={() => setShowReviews(true)}>
-      <ClipboardCheck size={17}/>
-      Revisiones
-    </button>
-    {showReviews && <ReviewCycleWorkspace
-      teacher={props.teacher}
-      accessMode={props.accessMode}
-      coordinatorName={props.coordinatorName}
-      onClose={() => setShowReviews(false)}
-      onChanged={props.onChanged}
-    />}
-  </>;
+  return <ExpedientWorkspaceV8 {...props} />;
 }
