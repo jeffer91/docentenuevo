@@ -369,9 +369,11 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
       const width = 178;
       const isConsolidated = reportKey === "informe_consolidado";
       const allResolved = (Object.keys(phaseSummaries) as PhaseKey[]).every((phase) => phaseSummaries[phase].resolved === phaseSummaries[phase].total && phaseSummaries[phase].total > 0);
-      const phaseResolved = definition.phase
-        ? phaseSummaries[definition.phase].total > 0 && phaseSummaries[definition.phase].resolved === phaseSummaries[definition.phase].total
-        : allResolved;
+      const phaseResolved = isConsolidated
+        ? allResolved
+        : definition.phase
+          ? phaseSummaries[definition.phase].total > 0 && phaseSummaries[definition.phase].resolved === phaseSummaries[definition.phase].total
+          : allResolved;
       const draft = !phaseResolved;
       const version = documents.filter((item) => item.document_type === reportKey && item.status !== "void").length + 1;
       const code = verificationCode();
