@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
       "app/teacher-master-modal.tsx",
       "app/teacher-portal.tsx",
       "app/teacher-process-portal.tsx",
+      "app/teacher-process-portal-v2.tsx",
+      "app/teacher-criterion-evidence-workspace.tsx",
       "app/teacher-evidence-hub.tsx",
       "app/teacher-evidence-panel.tsx",
       "app/teacher-indicators.tsx",
