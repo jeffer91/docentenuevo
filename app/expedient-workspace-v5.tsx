@@ -1,6 +1,6 @@
 "use client";
 
-import ExpedientWorkspaceV7 from "./expedient-workspace-v7";
+import ExpedientWorkspaceV8 from "./expedient-workspace-v8";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
 
 type Props = {
@@ -12,10 +12,9 @@ type Props = {
 };
 
 /**
- * El expediente activo se concentra en Áreas / Antes / Durante / Después.
- * El centro de revisiones histórico se conserva en código por compatibilidad,
- * pero ya no se expone como flujo paralelo al usuario.
+ * Flujo único vigente: Áreas / Antes / Durante / Después, evaluación integrada
+ * e informes institucionales con las evidencias finales aprobadas.
  */
 export default function ExpedientWorkspaceV5(props: Props) {
-  return <ExpedientWorkspaceV7 {...props} />;
+  return <ExpedientWorkspaceV8 {...props} />;
 }
