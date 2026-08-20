@@ -27,6 +27,13 @@ test("genera los cuatro accesos públicos", async () => {
   }
 });
 
+test("el build publica una huella de versión verificable", async () => {
+  const version = JSON.parse(await read("version.json"));
+  assert.equal(version.app, "SIACD");
+  assert.match(version.commit, /^(?:[0-9a-f]{7}|unknown)$/i);
+  assert.equal(typeof version.built_at, "string");
+});
+
 test("la portada general expone los tres perfiles", async () => {
   const js = await bundledJavascript();
   assert.match(js, /Acceso Docentes/);
