@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BarChart3, GraduationCap } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import InstitutionalIndicators from "./institutional-indicators";
 import SiacdAppV3 from "./siacd-app-v3";
 import styles from "./siacd-app-v6.module.css";
@@ -21,11 +21,9 @@ export default function SiacdAppV6({ forcedAccess }: { forcedAccess?: "coordinat
   }, [forcedAccess]);
 
   const canShow = forcedAccess === "admin" || (forcedAccess === "coordinator" && coordinatorId);
-  const showTeacherAccess = forcedAccess === undefined;
 
   return <>
     <SiacdAppV3 forcedAccess={forcedAccess} />
-    {showTeacherAccess && <a className={styles.teacherAccess} href="./docente/"><GraduationCap size={17}/>Acceso Docente</a>}
     {canShow && <button className={styles.launcher} onClick={() => setShowIndicators(true)}><BarChart3 size={17}/>Indicadores</button>}
     {showIndicators && canShow && <InstitutionalIndicators
       mode={forcedAccess === "admin" ? "admin" : "coordinator"}
