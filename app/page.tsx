@@ -1,5 +1,5 @@
-import SiacdApp from "./siacd-app-v6";
+import AccessLanding from "./access-landing";
 
 export default function Home() {
-  return <SiacdApp />;
+  return <AccessLanding />;
 }
