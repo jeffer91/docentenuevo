@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite --config vite.pages.config.ts",
     "build": "npm run build:pages",
-    "build:pages": "vite build --config vite.pages.config.ts",
+    "build:pages": "vite build --config vite.pages.config.ts && node scripts/write-build-version.mjs",
     "start": "vite preview --config vite.pages.config.ts",
     "test": "node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern pages-dist --ignore-pattern supabase/functions"
