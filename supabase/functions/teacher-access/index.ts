@@ -2,8 +2,6 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const EMAIL_FROM = Deno.env.get("SIACD_EMAIL_FROM") ?? "SIACD <no-reply@itsqmet.edu.ec>";
 const FIREBASE_DATABASE_URL = "https://repaso-fire-d8ceb-default-rtdb.firebaseio.com";
 
 const allowedOrigins = new Set([
@@ -56,16 +54,12 @@ function normalizeName(value: unknown) {
     .toUpperCase();
 }
 
-function generateFourDigitCode() {
-  const values = new Uint32Array(1);
-  crypto.getRandomValues(values);
-  return String(values[0] % 10000).padStart(4, "0");
-}
-
-async function sha256Hex(value: string) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+function parseCareers(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+  }
+  return [];
 }
 
 type TeacherRow = {
@@ -73,11 +67,64 @@ type TeacherRow = {
   full_name: string | null;
   institutional_email: string | null;
   national_id: string | null;
+  started_institution_on: string | null;
 };
+
+type FirebaseTeacher = {
+  cedula?: unknown;
+  nombresCompletos?: unknown;
+  carreras?: unknown;
+  carrera?: unknown;
+  rol?: unknown;
+};
+
+function candidateScore(candidate: TeacherRow, referenceName: string) {
+  const reference = normalizeName(referenceName);
+  const current = normalizeName(candidate.full_name);
+  if (!reference || !current) return 0;
+  if (reference === current) return 10;
+
+  const referenceTokens = [...new Set(reference.split(" ").filter(Boolean))];
+  const candidateTokens = [...new Set(current.split(" ").filter(Boolean))];
+  const referenceSet = new Set(referenceTokens);
+  const intersection = candidateTokens.filter((token) => referenceSet.has(token)).length;
+  if (!intersection) return 0;
+
+  const candidateCoverage = intersection / candidateTokens.length;
+  const referenceCoverage = intersection / referenceTokens.length;
+  const institutionalBonus = normalizeEmail(candidate.institutional_email).includes("@itsqmet.") ? 0.3 : 0;
+  return candidateCoverage * 2 + referenceCoverage + institutionalBonus;
+}
+
+function bestCandidate(candidates: TeacherRow[], referenceName: string) {
+  const ranked = candidates
+    .filter((candidate) => !candidate.national_id)
+    .map((candidate) => ({ candidate, score: candidateScore(candidate, referenceName) }))
+    .filter((item) => item.score >= 1.5)
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.candidate ?? null;
+}
+
+async function readFirebaseTeacher(cedula: string): Promise<FirebaseTeacher | null> {
+  try {
+    const response = await fetch(`${FIREBASE_DATABASE_URL}/docentes-registrados/${encodeURIComponent(cedula)}.json`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data && typeof data === "object" ? data as FirebaseTeacher : null;
+  } catch {
+    return null;
+  }
+}
+
+function firebaseCareers(record: FirebaseTeacher | null) {
+  const values = parseCareers(record?.carreras);
+  if (typeof record?.carrera === "string" && record.carrera.trim()) values.push(record.carrera.trim());
+  return [...new Set(values)];
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
-  if (req.method !== "POST") return json(req, { ok: false }, 405);
+  if (req.method !== "POST") return json(req, { ok: false, error: "method_not_allowed" }, 405);
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return json(req, { ok: false, error: "service_unavailable" }, 503);
 
   let payload: Record<string, unknown>;
@@ -87,137 +134,175 @@ Deno.serve(async (req: Request) => {
     return json(req, { ok: false, error: "invalid_request" }, 400);
   }
 
+  const action = String(payload.action ?? "status");
   const cedula = normalizeCedula(payload.cedula);
   if (!cedula) return json(req, { ok: false, error: "invalid_national_id" }, 400);
-  if (!RESEND_API_KEY) return json(req, { ok: false, error: "email_delivery_not_configured" }, 503);
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const genericOk = () => json(req, {
-    ok: true,
-    message: "Si la cédula está registrada y tiene correo institucional, recibirá un código de acceso.",
-  });
+  if (action === "login") {
+    const pin = String(payload.pin ?? "");
+    if (!/^\d{4}$/.test(pin)) return json(req, { ok: false, error: "invalid_pin" }, 400);
 
-  let teacher: TeacherRow | null = null;
+    const { data, error } = await supabase.rpc("teacher_login_with_pin", {
+      p_national_id: cedula,
+      p_pin: pin,
+      p_device_label: typeof payload.device_label === "string" ? payload.device_label.slice(0, 180) : null,
+    });
+
+    const row = !error && Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
+    if (row?.device_token) return json(req, { ok: true, ...row });
+
+    const { data: teacher } = await supabase
+      .from("teachers")
+      .select("id")
+      .eq("national_id", cedula)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (teacher?.id) {
+      const { data: access } = await supabase
+        .from("teacher_access")
+        .select("pin_hash, active")
+        .eq("teacher_id", teacher.id)
+        .maybeSingle();
+      if (!access?.pin_hash || !access.active) return json(req, { ok: false, error: "registration_required" }, 409);
+    } else {
+      return json(req, { ok: false, error: "registration_required" }, 409);
+    }
+
+    return json(req, { ok: false, error: "invalid_credentials" }, 401);
+  }
 
   const { data: teacherByCedula } = await supabase
     .from("teachers")
-    .select("id, full_name, institutional_email, national_id")
+    .select("id, full_name, institutional_email, national_id, started_institution_on")
     .eq("national_id", cedula)
     .eq("active", true)
     .limit(1)
     .maybeSingle();
 
-  if (teacherByCedula?.id) teacher = teacherByCedula as TeacherRow;
+  const directory = await readFirebaseTeacher(cedula);
+  const directoryName = typeof directory?.nombresCompletos === "string" ? directory.nombresCompletos.trim() : "";
+
+  let suggestedTeacher = teacherByCedula as TeacherRow | null;
+  if (!suggestedTeacher && directoryName) {
+    const { data: candidates } = await supabase
+      .from("teachers")
+      .select("id, full_name, institutional_email, national_id, started_institution_on")
+      .eq("active", true);
+    suggestedTeacher = bestCandidate((candidates ?? []) as TeacherRow[], directoryName);
+  }
+
+  if (action === "status") {
+    let registered = false;
+    if (teacherByCedula?.id) {
+      const { data: access } = await supabase
+        .from("teacher_access")
+        .select("pin_hash, active")
+        .eq("teacher_id", teacherByCedula.id)
+        .maybeSingle();
+      registered = Boolean(access?.active && access?.pin_hash);
+    }
+
+    return json(req, {
+      ok: true,
+      registered,
+      found: Boolean(directory || suggestedTeacher),
+      full_name: directoryName || suggestedTeacher?.full_name || "",
+      email: normalizeEmail(suggestedTeacher?.institutional_email),
+      started_institution_on: suggestedTeacher?.started_institution_on ?? "",
+      careers: firebaseCareers(directory),
+    });
+  }
+
+  if (action !== "register") return json(req, { ok: false, error: "invalid_action" }, 400);
+
+  const fullName = typeof payload.full_name === "string" ? payload.full_name.trim() : "";
+  const email = normalizeEmail(payload.email);
+  const pin = String(payload.pin ?? "");
+  const startedOn = typeof payload.started_institution_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.started_institution_on)
+    ? payload.started_institution_on
+    : null;
+
+  if (fullName.length < 5) return json(req, { ok: false, error: "invalid_name" }, 400);
+  if (!validEmail(email)) return json(req, { ok: false, error: "invalid_email" }, 400);
+  if (!/^\d{4}$/.test(pin)) return json(req, { ok: false, error: "invalid_pin" }, 400);
+
+  let teacher = teacherByCedula as TeacherRow | null;
 
   if (!teacher) {
-    try {
-      const directoryResponse = await fetch(
-        `${FIREBASE_DATABASE_URL}/docentes-registrados/${encodeURIComponent(cedula)}.json`,
-      );
-      if (directoryResponse.ok) {
-        const directory = await directoryResponse.json() as { nombresCompletos?: unknown } | null;
-        const directoryName = normalizeName(directory?.nombresCompletos);
-        if (directoryName) {
-          const { data: candidates } = await supabase
-            .from("teachers")
-            .select("id, full_name, institutional_email, national_id")
-            .eq("active", true);
-          const matches = ((candidates ?? []) as TeacherRow[])
-            .filter((candidate) => normalizeName(candidate.full_name) === directoryName);
-          const institutionalMatches = matches.filter((candidate) => normalizeEmail(candidate.institutional_email).includes("@itsqmet."));
-          const match = institutionalMatches.length === 1
-            ? institutionalMatches[0]
-            : matches.length === 1
-              ? matches[0]
-              : null;
-          if (match) {
-            const { error: backfillError } = await supabase
-              .from("teachers")
-              .update({ national_id: cedula, updated_at: new Date().toISOString() })
-              .eq("id", match.id)
-              .is("national_id", null);
-            if (!backfillError) teacher = { ...match, national_id: cedula };
-          }
-        }
-      }
-    } catch {
-    }
+    const { data: emailCandidates } = await supabase
+      .from("teachers")
+      .select("id, full_name, institutional_email, national_id, started_institution_on")
+      .eq("active", true);
+    const candidates = (emailCandidates ?? []) as TeacherRow[];
+    teacher = candidates.find((candidate) => {
+      const sameEmail = normalizeEmail(candidate.institutional_email) === email;
+      const compatibleId = !candidate.national_id || candidate.national_id === cedula;
+      return sameEmail && compatibleId;
+    }) ?? bestCandidate(candidates, directoryName || fullName);
   }
 
-  if (!teacher?.id) return genericOk();
+  const now = new Date().toISOString();
+  if (teacher?.id) {
+    if (teacher.national_id && teacher.national_id !== cedula) return json(req, { ok: false, error: "identity_conflict" }, 409);
+    const { error: updateError } = await supabase
+      .from("teachers")
+      .update({
+        national_id: cedula,
+        full_name: fullName,
+        institutional_email: email,
+        started_institution_on: startedOn,
+        active: true,
+        updated_at: now,
+      })
+      .eq("id", teacher.id);
+    if (updateError) return json(req, { ok: false, error: "profile_update_failed" }, 500);
+  } else {
+    const { data: created, error: createError } = await supabase
+      .from("teachers")
+      .insert({
+        national_id: cedula,
+        full_name: fullName,
+        institutional_email: email,
+        started_institution_on: startedOn,
+        active: true,
+        created_by: null,
+        updated_at: now,
+      })
+      .select("id, full_name, institutional_email, national_id, started_institution_on")
+      .single();
+    if (createError || !created) return json(req, { ok: false, error: "profile_create_failed" }, 500);
+    teacher = created as TeacherRow;
+  }
 
-  const { data: existingAccess } = await supabase
-    .from("teacher_access")
-    .select("teacher_id, email, active")
-    .eq("teacher_id", teacher.id)
-    .maybeSingle();
-
-  const institutionalEmail = normalizeEmail(teacher.institutional_email);
-  const accessEmail = normalizeEmail(existingAccess?.email);
-  const email = validEmail(institutionalEmail) ? institutionalEmail : accessEmail;
-  if (!validEmail(email)) return genericOk();
-
-  const { error: accessError } = await supabase
-    .from("teacher_access")
-    .upsert({
-      teacher_id: teacher.id,
-      email,
-      active: true,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "teacher_id" });
-  if (accessError) return json(req, { ok: false, error: "access_preparation_failed" }, 500);
-
-  const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString();
-  const { data: recentCode } = await supabase
-    .from("teacher_login_codes")
-    .select("id")
-    .eq("teacher_id", teacher.id)
-    .gte("created_at", sixtySecondsAgo)
-    .is("consumed_at", null)
-    .limit(1)
-    .maybeSingle();
-
-  if (recentCode?.id) return genericOk();
-
-  const code = generateFourDigitCode();
-  const hash = await sha256Hex(code);
-  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
-
-  const { data: loginCode, error: codeError } = await supabase
-    .from("teacher_login_codes")
-    .insert({
-      teacher_id: teacher.id,
-      email,
-      code_hash: `\\x${hash}`,
-      expires_at: expiresAt,
-    })
-    .select("id")
-    .single();
-
-  if (codeError || !loginCode) return json(req, { ok: false, error: "code_creation_failed" }, 500);
-
-  const teacherName = String(teacher.full_name ?? "Docente").replace(/[<>&]/g, "");
-  const emailResponse = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
-      from: EMAIL_FROM,
-      to: [email],
-      subject: "Código de acceso SIACD",
-      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto"><h2>Acceso docente SIACD</h2><p>Hola ${teacherName},</p><p>Su código de acceso es:</p><div style="font-size:34px;font-weight:700;letter-spacing:8px;padding:18px 0">${code}</div><p>El código vence en 10 minutos y solo puede usarse una vez.</p><p>Si usted no solicitó este acceso, ignore este mensaje.</p></div>`,
-    }),
+  const { data: pinRegistered, error: pinError } = await supabase.rpc("teacher_register_pin", {
+    p_teacher_id: teacher.id,
+    p_email: email,
+    p_pin: pin,
   });
+  if (pinError || pinRegistered !== true) return json(req, { ok: false, error: "pin_registration_failed" }, 409);
 
-  if (!emailResponse.ok) {
-    await supabase.from("teacher_login_codes").delete().eq("id", loginCode.id);
-    return json(req, { ok: false, error: "email_delivery_failed" }, 502);
+  try {
+    await fetch(`${FIREBASE_DATABASE_URL}/docentes-registrados/${encodeURIComponent(cedula)}.json`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cedula, nombresCompletos: fullName, rol: "docente", actualizadoEn: now }),
+    });
+  } catch {
   }
 
-  return genericOk();
+  const { data: loginData, error: loginError } = await supabase.rpc("teacher_login_with_pin", {
+    p_national_id: cedula,
+    p_pin: pin,
+    p_device_label: typeof payload.device_label === "string" ? payload.device_label.slice(0, 180) : null,
+  });
+  const loginRow = !loginError && Array.isArray(loginData) ? loginData[0] as Record<string, unknown> | undefined : undefined;
+  if (!loginRow?.device_token) return json(req, { ok: false, error: "session_creation_failed" }, 500);
+
+  return json(req, { ok: true, registered: true, ...loginRow });
 });
