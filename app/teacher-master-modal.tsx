@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Plus, Save, X } from "lucide-react";
+import { KeyRound, Plus, Save, X } from "lucide-react";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import {
   cedulaValidationWarning,
@@ -22,9 +22,10 @@ export type TeacherMasterRecord = {
 
 export type TeacherMasterCareer = { id: string; name: string; program?: string };
 
-export default function TeacherMasterModal({ teacher, careers, onClose, onChanged }: {
+export default function TeacherMasterModal({ teacher, careers, canManagePin = false, onClose, onChanged }: {
   teacher: TeacherMasterRecord;
   careers: TeacherMasterCareer[];
+  canManagePin?: boolean;
   onClose: () => void;
   onChanged: () => Promise<void> | void;
 }) {
@@ -34,6 +35,9 @@ export default function TeacherMasterModal({ teacher, careers, onClose, onChange
   const [entryDate, setEntryDate] = useState(teacher.entryDate);
   const [directoryCareers, setDirectoryCareers] = useState<string[]>([]);
   const [careerToAdd, setCareerToAdd] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [adminPin, setAdminPin] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -81,6 +85,21 @@ export default function TeacherMasterModal({ teacher, careers, onClose, onChange
       setMessage("La cédula debe tener 9 o 10 dígitos.");
       return;
     }
+    if (canManagePin && (newPin || confirmPin || adminPin)) {
+      if (!/^\d{4}$/.test(newPin)) {
+        setMessage("El nuevo PIN del docente debe tener exactamente 4 dígitos.");
+        return;
+      }
+      if (newPin !== confirmPin) {
+        setMessage("La confirmación del nuevo PIN no coincide.");
+        return;
+      }
+      if (!/^\d{4}$/.test(adminPin)) {
+        setMessage("Ingrese su clave de administrador de 4 dígitos para cambiar el PIN del docente.");
+        return;
+      }
+    }
+
     setSaving(true);
     setMessage("");
     const now = new Date().toISOString();
@@ -123,6 +142,29 @@ export default function TeacherMasterModal({ teacher, careers, onClose, onChange
       return;
     }
 
+    if (canManagePin && newPin) {
+      const { data: pinData, error: pinError } = await supabase.functions.invoke("teacher-access", {
+        body: {
+          action: "admin_reset_pin",
+          teacher_id: teacher.teacherId,
+          admin_pin: adminPin,
+          new_pin: newPin,
+        },
+      });
+      const serviceError = (pinData as { error?: string } | null)?.error;
+      if (pinError || serviceError) {
+        setSaving(false);
+        if (serviceError === "invalid_admin_pin") {
+          setMessage("Los datos del docente se guardaron, pero la clave de administrador no es correcta y el PIN no se cambió.");
+        } else if (serviceError === "teacher_email_required") {
+          setMessage("Los datos se guardaron, pero para crear el PIN el docente debe tener un correo válido.");
+        } else {
+          setMessage("Los datos se guardaron, pero no se pudo cambiar el PIN del docente.");
+        }
+        return;
+      }
+    }
+
     await onChanged();
     setSaving(false);
     onClose();
@@ -148,6 +190,16 @@ export default function TeacherMasterModal({ teacher, careers, onClose, onChange
             }) : <small>Sin carreras registradas.</small>}</div>}
             <div className="teacher-directory-add"><select value={careerToAdd} onChange={(event) => setCareerToAdd(event.target.value)}><option value="">Agregar carrera...</option>{careers.filter((career) => !directoryCareers.some((item) => normalizeDirectoryLabel(item) === normalizeDirectoryLabel(career.name))).map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""}</option>)}</select><button type="button" className="secondary-button" onClick={addCareer} disabled={!careerToAdd}><Plus size={13} />Agregar</button></div>
           </div>
+
+          {canManagePin && <>
+            <div className="field full teacher-directory-careers">
+              <label><KeyRound size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Acceso del docente</label>
+              <div className="teacher-master-readonly">PIN actual: •••• · El PIN se guarda protegido y no puede visualizarse. El administrador sí puede reemplazarlo.</div>
+            </div>
+            <div className="field"><label>Nuevo PIN</label><input type="password" inputMode="numeric" maxLength={4} value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4 dígitos" autoComplete="new-password" /></div>
+            <div className="field"><label>Confirmar nuevo PIN</label><input type="password" inputMode="numeric" maxLength={4} value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Repita el PIN" autoComplete="new-password" /></div>
+            <div className="field full"><label>Clave de administrador para autorizar el cambio</label><input type="password" inputMode="numeric" maxLength={4} value={adminPin} onChange={(event) => setAdminPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Solo necesaria si cambia el PIN" autoComplete="off" /></div>
+          </>}
 
           {message && <div className="field full"><div className="error-note">{message}</div></div>}
           <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={saving || !normalizedId}><Save size={14} />{saving ? "Guardando..." : "Guardar datos"}</button></div>
