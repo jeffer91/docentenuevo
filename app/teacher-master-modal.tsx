@@ -23,6 +23,27 @@ export type TeacherMasterRecord = {
 
 export type TeacherMasterCareer = { id: string; name: string; program?: string };
 
+type TeacherExpedientSummary = {
+  id: string;
+  career: string;
+  subject: string;
+  period: string;
+  modality: string;
+};
+
+function relation(value: unknown): Record<string, unknown> | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  return row && typeof row === "object" ? row as Record<string, unknown> : null;
+}
+
+function careerLabel(value: unknown) {
+  const row = relation(value);
+  if (!row) return "Sin carrera";
+  const name = String(row.name ?? "Sin carrera");
+  const program = row.program ? String(row.program) : "";
+  return program ? `${name} — ${program}` : name;
+}
+
 export default function TeacherMasterModal({ teacher, careers, canManagePin = false, onClose, onChanged }: {
   teacher: TeacherMasterRecord;
   careers: TeacherMasterCareer[];
@@ -36,6 +57,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
   const [entryDate, setEntryDate] = useState(teacher.entryDate);
   const [directoryCareers, setDirectoryCareers] = useState<string[]>([]);
   const [careerToAdd, setCareerToAdd] = useState("");
+  const [expedients, setExpedients] = useState<TeacherExpedientSummary[]>([]);
   const [currentPin, setCurrentPin] = useState("");
   const [pinVisible, setPinVisible] = useState(false);
   const [pinLoading, setPinLoading] = useState(false);
@@ -45,6 +67,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingExpedientId, setDeletingExpedientId] = useState("");
   const [message, setMessage] = useState("");
 
   const managePin = canManagePin || (typeof window !== "undefined" && window.location.pathname.toLowerCase().includes("/administrador"));
@@ -55,22 +78,45 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
   useEffect(() => {
     let active = true;
     async function load() {
-      if (!teacher.nationalId) {
-        if (active) setLoading(false);
-        return;
+      setLoading(true);
+      const supabase = getSupabaseBrowserClient();
+
+      if (teacher.nationalId) {
+        try {
+          const record = await readDirectoryTeacher(teacher.nationalId);
+          if (active) setDirectoryCareers(record?.carreras ?? []);
+        } catch {
+          if (active) setMessage("No se pudo leer Firebase. Puede editar los datos y volver a sincronizar al guardar.");
+        }
       }
-      try {
-        const record = await readDirectoryTeacher(teacher.nationalId);
-        if (active) setDirectoryCareers(record?.carreras ?? []);
-      } catch {
-        if (active) setMessage("No se pudo leer Firebase. Puede editar los datos y volver a sincronizar al guardar.");
-      } finally {
-        if (active) setLoading(false);
+
+      if (supabase) {
+        const { data, error } = await supabase
+          .from("expedients")
+          .select("id, subject_names, modality, careers(name, program), academic_periods(name)")
+          .eq("teacher_id", teacher.teacherId)
+          .order("created_at", { ascending: false });
+
+        if (!active) return;
+        if (error) {
+          setMessage((current) => current || `No se pudieron cargar los expedientes del docente: ${error.message}`);
+        } else {
+          const rows = ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+            id: String(row.id),
+            career: careerLabel(row.careers),
+            subject: String(row.subject_names ?? "Sin asignatura"),
+            period: String(relation(row.academic_periods)?.name ?? "Sin período"),
+            modality: String(row.modality ?? "Sin modalidad"),
+          }));
+          setExpedients(rows);
+        }
       }
+
+      if (active) setLoading(false);
     }
     void load();
     return () => { active = false; };
-  }, [teacher.nationalId]);
+  }, [teacher.nationalId, teacher.teacherId]);
 
   function addCareer() {
     const career = careers.find((item) => item.id === careerToAdd);
@@ -127,10 +173,38 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
     setPinVisible(true);
   }
 
-  async function deleteTeacher() {
-    if (!managePin || deleting) return;
+  async function deleteExpedient(expedient: TeacherExpedientSummary) {
+    if (!managePin || deleting || deletingExpedientId) return;
     const confirmed = window.confirm(
-      `¿Eliminar definitivamente a ${teacher.name}?\n\nSe eliminarán sus expedientes, evaluaciones, evidencias, acceso y sesiones de SIACD. Esta acción no se puede deshacer.`,
+      `¿Eliminar este expediente de ${teacher.name}?\n\n${expedient.career}\n${expedient.subject}\n${expedient.period}\n\nSe eliminarán únicamente este expediente y sus evaluaciones, revisiones, evidencias e informes. El docente y sus otros expedientes se conservarán.`,
+    );
+    if (!confirmed) return;
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setMessage("Supabase no está configurado.");
+      return;
+    }
+
+    setDeletingExpedientId(expedient.id);
+    setMessage("");
+    const { error } = await supabase.from("expedients").delete().eq("id", expedient.id);
+    if (error) {
+      setDeletingExpedientId("");
+      setMessage(`No se pudo eliminar el expediente: ${error.message}`);
+      return;
+    }
+
+    setExpedients((current) => current.filter((item) => item.id !== expedient.id));
+    await onChanged();
+    setDeletingExpedientId("");
+    setMessage("Expediente eliminado. El docente y sus demás expedientes se conservaron.");
+  }
+
+  async function deleteTeacher() {
+    if (!managePin || deleting || deletingExpedientId) return;
+    const confirmed = window.confirm(
+      `¿Eliminar definitivamente a ${teacher.name}?\n\nSe eliminarán TODOS sus expedientes, evaluaciones, evidencias, acceso y sesiones de SIACD. Esta acción no se puede deshacer.`,
     );
     if (!confirmed) return;
 
@@ -266,7 +340,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
   return (
     <div className="modal-backdrop">
       <div className="modal teacher-master-modal" role="dialog" aria-modal="true">
-        <div className="modal-head"><div><h2>Datos maestros del docente</h2><p className="subtitle">Actualiza Supabase y el nodo docentes-registrados de Firebase.</p></div><button className="icon-button" onClick={onClose}><X size={17} /></button></div>
+        <div className="modal-head"><div><h2>Datos maestros del docente</h2><p className="subtitle">Administre la identidad del docente, sus expedientes y el acceso al SIACD.</p></div><button className="icon-button" onClick={onClose}><X size={17} /></button></div>
         <form className="modal-body form-grid" onSubmit={submit}>
           <div className="field"><label>Cédula</label><input inputMode="numeric" value={nationalId} readOnly={Boolean(teacher.nationalId)} onChange={(event) => setNationalId(event.target.value.replace(/\D/g, "").slice(0, 10))} required /></div>
           <div className="field"><label>Estado de identificación</label><div className="teacher-master-readonly">{normalizedId ?? "Pendiente"}</div></div>
@@ -283,6 +357,17 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
             }) : <small>Sin carreras registradas.</small>}</div>}
             <div className="teacher-directory-add"><select value={careerToAdd} onChange={(event) => setCareerToAdd(event.target.value)}><option value="">Agregar carrera...</option>{careers.filter((career) => !directoryCareers.some((item) => normalizeDirectoryLabel(item) === normalizeDirectoryLabel(career.name))).map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""}</option>)}</select><button type="button" className="secondary-button" onClick={addCareer} disabled={!careerToAdd}><Plus size={13} />Agregar</button></div>
           </div>
+
+          {managePin && <div className="field full teacher-directory-careers">
+            <label>Expedientes vinculados ({expedients.length})</label>
+            <small>Un docente puede tener varios expedientes. Elimine únicamente el expediente incorrecto sin borrar al docente.</small>
+            {loading ? <div className="teacher-master-readonly">Cargando expedientes...</div> : expedients.length ? <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+              {expedients.map((expedient) => <div key={expedient.id} style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", padding: "10px 12px", border: "1px solid #dbe2ea", borderRadius: 12, background: "#fff" }}>
+                <div style={{ minWidth: 0 }}><strong style={{ display: "block" }}>{expedient.career}</strong><span className="row-meta">{expedient.subject} · {expedient.period} · {expedient.modality}</span></div>
+                <button type="button" className="ghost-button" onClick={() => void deleteExpedient(expedient)} disabled={Boolean(deletingExpedientId) || deleting || saving} style={{ flex: "0 0 auto", color: "#9b2c2c", borderColor: "#e6b9b5", background: "#fff7f6" }}><Trash2 size={14} />{deletingExpedientId === expedient.id ? "Eliminando..." : "Eliminar expediente"}</button>
+              </div>)}
+            </div> : <div className="teacher-master-readonly" style={{ marginTop: 8 }}>Este docente no tiene expedientes vinculados.</div>}
+          </div>}
 
           {managePin && <>
             <div className="field full teacher-directory-careers">
@@ -302,9 +387,9 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
 
           {message && <div className="field full"><div className="error-note">{message}</div></div>}
           <div className="form-actions">
-            {managePin && <button type="button" className="ghost-button" onClick={deleteTeacher} disabled={deleting || saving} style={{ marginRight: "auto", color: "#9b2c2c", borderColor: "#e6b9b5", background: "#fff7f6" }}><Trash2 size={14} />{deleting ? "Eliminando..." : "Eliminar docente"}</button>}
-            <button type="button" className="ghost-button" onClick={onClose} disabled={deleting}>Cancelar</button>
-            <button className="primary-button" type="submit" disabled={saving || deleting || !normalizedId}><Save size={14} />{saving ? "Guardando..." : "Guardar datos"}</button>
+            {managePin && <button type="button" className="ghost-button" onClick={deleteTeacher} disabled={deleting || saving || Boolean(deletingExpedientId)} style={{ marginRight: "auto", color: "#9b2c2c", borderColor: "#e6b9b5", background: "#fff7f6" }}><Trash2 size={14} />{deleting ? "Eliminando..." : "Eliminar docente completo"}</button>}
+            <button type="button" className="ghost-button" onClick={onClose} disabled={deleting || Boolean(deletingExpedientId)}>Cancelar</button>
+            <button className="primary-button" type="submit" disabled={saving || deleting || Boolean(deletingExpedientId) || !normalizedId}><Save size={14} />{saving ? "Guardando..." : "Guardar datos"}</button>
           </div>
         </form>
       </div>
