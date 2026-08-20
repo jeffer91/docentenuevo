@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ClipboardCheck } from "lucide-react";
-import LegacyWorkspace from "./expedient-workspace-v4";
+import ExpedientWorkspaceV6 from "./expedient-workspace-v6";
 import ReviewCycleWorkspace from "./review-cycle-workspace";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
 import styles from "./review-cycle-launcher.module.css";
@@ -19,7 +19,7 @@ export default function ExpedientWorkspaceV5(props: Props) {
   const [showReviews, setShowReviews] = useState(false);
 
   return <>
-    <LegacyWorkspace {...props} />
+    <ExpedientWorkspaceV6 {...props} />
     <button className={styles.launcher} onClick={() => setShowReviews(true)}>
       <ClipboardCheck size={17}/>
       Revisiones

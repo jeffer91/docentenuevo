@@ -1,69 +1,80 @@
 # SIACD · Acompañamiento Docente
 
-Aplicación web institucional para gestionar el expediente completo de acompañamiento a docentes nuevos: registro, cronograma H1–H6, evaluación, seguimiento, plan de mejora, evidencias, documentos y certificación.
+Aplicación web institucional para gestionar el acompañamiento completo a docentes nuevos: inducción por áreas, preparación previa, seguimiento durante la docencia, cierre, evidencias, revisiones e informes PDF.
 
 ## Accesos
 
 - **Coordinador:** `/coordinador/`. Selecciona su nombre y ve únicamente las carreras y docentes que tiene asignados.
 - **Administrador:** `/administrador/` con clave institucional. Gestiona coordinadores, carreras, docentes, estadísticas y catálogos.
-- **Docente:** `/docente/`. Accede con correo y código de 4 dígitos la primera vez; el dispositivo queda recordado mientras la sesión sea válida.
-- **Aprobador:** estructura preparada para una fase posterior, actualmente no expuesta en la interfaz.
+- **Docente:** `/docente/`. Accede con correo/cédula según el flujo vigente y mantiene su sesión de dispositivo mientras sea válida.
+- **Aprobador:** estructura preparada para una fase posterior, actualmente no expuesta como acceso principal.
 
 ## Organización del acompañamiento
 
-Los seis hitos institucionales se conservan sin alterar sus criterios ni sus pesos. SIACD ahora los organiza en tres momentos:
+La navegación operativa del expediente es:
 
-- **Antes:** H1 Inducción + H2 Preparación.
-- **Durante:** H3 Inicio de docencia + H4 Seguimiento 1 + H5 Seguimiento 2 + Calidad.
-- **Después:** H6 Cierre + validaciones finales + documentos + certificación.
+**Resumen | Áreas | Antes | Durante | Después | Informes | Historial**
 
-El expediente principal se presenta como **Resumen | Antes | Durante | Después | Historial**. El Historial concentra cronograma, bitácora, plan de mejora y evidencias, evitando una navegación principal con demasiadas pestañas.
+Los H1–H6 se conservan únicamente como claves técnicas para mantener compatibilidad con los expedientes y tablas existentes:
 
-La columna `phase` de `hito_definitions` guarda esta clasificación sin reemplazar el campo `moment`, que conserva el momento institucional detallado de cada hito.
+- **Áreas:** H1. Inducción institucional por Talento, Software, Calidad y Bienestar Estudiantil.
+- **Antes:** H2. Preparación del docente antes del inicio de la asignatura.
+- **Durante:** H3 + H4 + H5. Seguimiento general, adaptaciones, presentaciones, Unidades 1–4 y observación de clase.
+- **Después:** H6. Supletorios e informes finales.
+
+El avance y el cumplimiento se calculan de forma dinámica a partir de los criterios activos. Los criterios marcados como **No aplica** cuentan como resueltos para el avance, pero no afectan el porcentaje de cumplimiento.
+
+## Catálogo institucional vigente
+
+La migración `20260820110000_new_accompaniment_structure.sql` carga el catálogo derivado de `organización(2).xlsx` y corrige redacción y duplicaciones funcionales.
+
+El catálogo vigente contiene 129 criterios distribuidos entre:
+
+- Áreas: Talento, Software, Calidad y Bienestar Estudiantil.
+- Antes: Coordinador, Teams, Telegram, PEA, Adaptaciones, EVA y SISACAD.
+- Durante: General, Adaptaciones, Presentaciones, Unidad 1, Unidad 2, Unidad 3, Unidad 4 y Observación de clase.
+- Después: Cierre.
+
+El catálogo anterior no se elimina: queda inactivo para preservar trazabilidad histórica.
+
+## Informes PDF
+
+Cada expediente puede generar cinco informes oficiales:
+
+1. **Informe de Áreas**.
+2. **Informe Antes**.
+3. **Informe Durante**.
+4. **Informe Después**.
+5. **Informe Consolidado**.
+
+Los cuatro informes de etapa contienen el detalle de sus criterios, evaluaciones y observaciones. El consolidado presenta el resultado global, estado de cada etapa, brechas y narrativas de fortalezas/conclusiones cuando existen.
+
+Si aún existen criterios pendientes, el consolidado se genera identificado como **BORRADOR**. Los documentos se descargan en PDF y, cuando Supabase Storage está disponible, quedan registrados en `generated_documents` con código de verificación y versión visible en el nombre/observación.
 
 ## Revisión repetible
 
-El Bloque 1 dejó preparada la estructura para ciclos de revisión sin sobrescribir resultados anteriores. Los futuros ciclos pueden conservar revisión 1, corrección, revisión 2, etc., mientras `competency_scores` mantiene el estado vigente del expediente.
+Las revisiones continúan funcionando como ciclos independientes, sin sobrescribir resultados anteriores. `competency_scores` conserva el estado vigente y el módulo de Revisiones conserva el historial de revisiones/correcciones.
 
-## Asignación de carreras
+## Evidencias
 
-La creación o edición de un coordinador administra únicamente su nombre y estado. La asignación de carreras se realiza desde **Asignación de carreras** mediante carreras disponibles y carreras asignadas.
-
-Una carrera institucional solo puede pertenecer a un coordinador a la vez.
+Las evidencias permanecen almacenadas en Supabase Storage y vinculadas al expediente/H1–H6. Como H1–H6 ahora representan las cuatro etapas funcionales, las evidencias se contabilizan automáticamente en Áreas, Antes, Durante o Después.
 
 ## Directorio de docentes
 
-SIACD vincula los docentes por cédula con Firebase Realtime Database, proyecto `repaso-fire-d8ceb`, nodo `docentes-registrados`.
+SIACD vincula docentes por cédula con Firebase Realtime Database y utiliza Supabase como fuente del expediente institucional.
 
-- La cédula se normaliza a 10 dígitos. Si llega con 9, se antepone `0`.
-- SIACD advierte si el dígito verificador no coincide, pero no bloquea el registro.
-- Al registrar un docente se consulta Firebase y Supabase; cuando existen datos en ambos, se toma como base el registro actualizado más recientemente.
+- La cédula se normaliza a 10 dígitos.
 - Un docente se conserva una sola vez en `public.teachers` mediante `national_id` único y puede tener varios expedientes.
-- Firebase conserva datos básicos, varias carreras y múltiples roles.
-- Supabase continúa siendo la fuente del expediente SIACD, H1–H6, evaluaciones, evidencias, documentos y certificación.
-
-## Expediente docente
-
-Cada expediente conserva:
-
-- ficha del docente;
-- cronograma H1–H6;
-- 75 criterios operativos;
-- bitácora de seguimiento;
-- plan de mejora;
-- 17 criterios complementarios;
-- 21 criterios de calidad;
-- evidencias;
-- generación documental y certificación.
-
-El resultado integrado utiliza 60% del componente operativo, 15% de la matriz complementaria y 25% de calidad.
+- Firebase conserva información compartida del directorio.
+- Supabase conserva expedientes, evaluaciones, revisiones, evidencias y documentos.
 
 ## Tecnología y publicación
 
 - React 19 y TypeScript.
-- Supabase Postgres, Storage y Edge Functions.
+- Supabase Postgres y Storage.
 - Firebase Realtime Database para el directorio compartido.
-- Vite para el artefacto estático publicado en Cloudflare Pages.
+- Vite para el artefacto estático publicado.
+- jsPDF para los cinco informes PDF.
 
 La publicación institucional se realiza con:
 
@@ -73,15 +84,21 @@ powershell -ExecutionPolicy Bypass -File .\PUBLICAR_EN_CLOUDFLARE.ps1
 
 ## Base de datos
 
-Las migraciones oficiales están en `supabase/migrations/`. Las más recientes incorporan:
+Las migraciones oficiales están en `supabase/migrations/`.
 
-- personal SIACD y asignación de carreras;
-- expediente integral H1–H6;
-- matriz complementaria, calidad, evidencias y documentos;
-- una carrera por coordinador;
-- cédula única para vincular Supabase con Firebase;
-- acceso docente y estructura de ciclos de revisión;
-- clasificación de H1–H6 en Antes, Durante y Después.
+Para habilitar la nueva organización es indispensable aplicar:
+
+```text
+20260820110000_new_accompaniment_structure.sql
+```
+
+Esta migración:
+
+- agrega la fase `areas`;
+- reclasifica H1–H6;
+- conserva el catálogo anterior como inactivo;
+- carga los 129 criterios de la nueva organización;
+- mantiene los seis hitos técnicos en expedientes ya existentes.
 
 ## Estructura principal
 
@@ -90,19 +107,15 @@ app/
   administrador/
   coordinador/
   docente/
-  admin-shell.tsx
-  admin-career-manager.tsx
+  expedient-workspace.tsx          Entrada activa
+  expedient-workspace-v5.tsx       Integra expediente + Revisiones
+  expedient-workspace-v6.tsx       Nueva organización y 5 informes PDF
+  expedient-workspace-v6.module.css
+  review-cycle-workspace.tsx
+  evidence-review-workspace.tsx
   teacher-portal.tsx
-  teacher-registration-modal.tsx
-  teacher-master-modal.tsx
-  expedient-workspace.tsx          Entrada activa del expediente
-  expedient-workspace-v4.tsx       Organización Antes/Durante/Después
-  expedient-finalization.tsx
-  lib/teacher-directory.ts
-  static-main.tsx
-pages/
+  lib/
 supabase/migrations/
-supabase/functions/
 ```
 
-`siacd-app-v2.tsx` se conserva únicamente como referencia histórica y no participa en la aplicación activa.
+Las versiones anteriores del expediente se conservan como referencia histórica y compatibilidad, pero la entrada activa utiliza V6 a través de V5.

@@ -5,7 +5,7 @@ import { BarChart3, Paperclip } from "lucide-react";
 import TeacherCedulaAccess from "./teacher-cedula-access";
 import TeacherEvidenceHub from "./teacher-evidence-hub";
 import TeacherIndicators from "./teacher-indicators";
-import TeacherPortalLegacy from "./teacher-portal-legacy";
+import TeacherProcessPortal from "./teacher-process-portal";
 import styles from "./teacher-portal-shell.module.css";
 
 const DEVICE_TOKEN_KEY = "siacd-teacher-device-token";
@@ -35,7 +35,7 @@ export default function TeacherPortal() {
   if (!token) return <TeacherCedulaAccess onAuthenticated={setToken} />;
 
   return <>
-    <TeacherPortalLegacy />
+    <TeacherProcessPortal token={token} />
     <button className={styles.indicatorButton} onClick={() => setShowIndicators(true)}><BarChart3 size={17}/>Mis indicadores</button>
     <button className={styles.evidenceButton} onClick={() => setShowEvidence(true)}><Paperclip size={17}/>Evidencias</button>
     {showEvidence && <TeacherEvidenceHub token={token} onClose={() => setShowEvidence(false)} />}
