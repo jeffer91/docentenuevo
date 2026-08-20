@@ -60,6 +60,9 @@ export type Teacher = {
   plannedCloseDate: string;
   scheduleRanges: string[];
   progress: number;
+  resolvedCriteria: number;
+  totalCriteria: number;
+  compliance: number;
   status: "En acompañamiento" | "Con brechas" | "Pendiente de aprobación" | "Aprobado" | "Certificado";
   currentHito: string;
   criticalGaps: number;
@@ -70,6 +73,23 @@ type CoordinatorInput = {
   id?: string;
   name: string;
   active: boolean;
+};
+
+type IndicatorRow = {
+  expedient_id: string;
+  phase: "areas" | "before" | "during" | "after";
+  progress: number;
+  operational_resolved: number;
+  operational_total: number;
+  operational_percent: number;
+  critical_gaps: number;
+};
+
+const phaseName: Record<IndicatorRow["phase"], string> = {
+  areas: "Áreas",
+  before: "Antes",
+  during: "Durante",
+  after: "Después",
 };
 
 const coordinatorNav = [
@@ -135,7 +155,7 @@ function mapStaff(row: Record<string, unknown>): StaffMember {
   };
 }
 
-function mapExpedient(row: Record<string, unknown>): Teacher {
+function mapExpedient(row: Record<string, unknown>, metric?: IndicatorRow): Teacher {
   const teacher = relation(row.teachers);
   const career = relation(row.careers);
   const period = relation(row.academic_periods);
@@ -145,8 +165,17 @@ function mapExpedient(row: Record<string, unknown>): Teacher {
     ? [...(row.expedient_schedules as Record<string, unknown>[])].sort((a, b) => Number(a.sequence ?? 0) - Number(b.sequence ?? 0))
     : [];
   const status = mapStatus(String(row.status ?? "draft"));
-  const progress = status === "Certificado" ? 100 : Math.round((executed.length / 6) * 100);
-  const nextHito = Math.min(6, executed.length + 1);
+  const resolvedCriteria = Number(metric?.operational_resolved ?? 0);
+  const totalCriteria = Number(metric?.operational_total ?? 0);
+  const progress = status === "Certificado"
+    ? 100
+    : Number(metric?.progress ?? (executed.length ? Math.round((executed.length / 6) * 100) : 0));
+  const compliance = Number(metric?.operational_percent ?? 0);
+  const currentStage = status === "Certificado"
+    ? "Proceso finalizado"
+    : metric
+      ? `${phaseName[metric.phase]} · ${resolvedCriteria}/${totalCriteria}`
+      : "Áreas · pendiente";
 
   return {
     id: String(row.id),
@@ -165,13 +194,12 @@ function mapExpedient(row: Record<string, unknown>): Teacher {
     plannedCloseDate: String(row.planned_close_on ?? ""),
     scheduleRanges: ranges.map((item) => `${String(item.start_time ?? "").slice(0, 5)} a ${String(item.end_time ?? "").slice(0, 5)}`),
     progress,
+    resolvedCriteria,
+    totalCriteria,
+    compliance,
     status,
-    currentHito: status === "Certificado"
-      ? "Proceso finalizado"
-      : executed.length === 6
-        ? "H6 · Cierre completado"
-        : `H${nextHito} · pendiente`,
-    criticalGaps: Number(row.critical_gaps ?? 0),
+    currentHito: currentStage,
+    criticalGaps: Number(metric?.critical_gaps ?? row.critical_gaps ?? 0),
     hitosExecuted: executed.length,
   };
 }
@@ -191,6 +219,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [careers, setCareers] = useState<CatalogOption[]>([]);
   const [periods, setPeriods] = useState<AcademicPeriod[]>([]);
+  const [activeCriteriaCount, setActiveCriteriaCount] = useState(0);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("");
   const [assignmentCoordinatorId, setAssignmentCoordinatorId] = useState("");
@@ -221,10 +250,11 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     setLoading(true);
     setSchemaIssue("");
 
-    const [staffResult, careerResult, periodResult] = await Promise.all([
+    const [staffResult, careerResult, periodResult, criterionResult] = await Promise.all([
       supabase.from("siacd_staff").select("id, full_name, role, active, siacd_staff_careers(career_id)").order("full_name"),
       supabase.from("careers").select("id, name, program").eq("active", true).order("name"),
       supabase.from("academic_periods").select("id, name").eq("active", true).order("starts_on", { ascending: false }),
+      supabase.from("competency_definitions").select("id", { count: "exact", head: true }).eq("active", true),
     ]);
 
     if (staffResult.error) {
@@ -235,8 +265,8 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
       setLoading(false);
       return;
     }
-    if (careerResult.error || periodResult.error) {
-      setSchemaIssue(`No se pudieron cargar los catálogos: ${careerResult.error?.message ?? periodResult.error?.message}`);
+    if (careerResult.error || periodResult.error || criterionResult.error) {
+      setSchemaIssue(`No se pudieron cargar los catálogos: ${careerResult.error?.message ?? periodResult.error?.message ?? criterionResult.error?.message}`);
       setLoading(false);
       return;
     }
@@ -244,6 +274,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     setStaff(((staffResult.data ?? []) as Record<string, unknown>[]).map(mapStaff));
     setCareers((careerResult.data ?? []) as CatalogOption[]);
     setPeriods((periodResult.data ?? []) as AcademicPeriod[]);
+    setActiveCriteriaCount(criterionResult.count ?? 0);
     setLoading(false);
   }, []);
 
@@ -272,7 +303,17 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
       setToast(`No se pudieron cargar los expedientes: ${error.message}`);
       return;
     }
-    setTeachers(((data ?? []) as Record<string, unknown>[]).map(mapExpedient));
+    const { data: indicatorData, error: indicatorError } = await supabase.rpc("staff_indicator_dashboard", {
+      p_staff_id: accessMode === "coordinator" ? coordinatorId ?? null : null,
+    });
+    if (indicatorError) {
+      setToast(`No se pudieron sincronizar los indicadores: ${indicatorError.message}`);
+    }
+    const indicatorRows = (!indicatorError && indicatorData && typeof indicatorData === "object"
+      ? ((indicatorData as { rows?: IndicatorRow[] }).rows ?? [])
+      : []) as IndicatorRow[];
+    const indicatorMap = new Map(indicatorRows.map((item) => [item.expedient_id, item]));
+    setTeachers(((data ?? []) as Record<string, unknown>[]).map((row) => mapExpedient(row, indicatorMap.get(String(row.id)))));
   }, [accessMode]);
 
   useEffect(() => {
@@ -460,7 +501,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     if (hitosError) {
       await supabase.from("expedients").delete().eq("id", expedient.id);
       if (createdTeacher) await supabase.from("teachers").delete().eq("id", teacherId);
-      return setToast(`No se pudo crear H1–H6: ${hitosError.message}`);
+      return setToast(`No se pudo crear la estructura técnica del expediente: ${hitosError.message}`);
     }
 
     let firebaseSynced = true;
@@ -523,7 +564,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
         {view === "reports" && <Reports teachers={teachers} />}
         {view === "coordinators" && accessMode === "admin" && <CoordinatorsPanel coordinators={coordinators} onNew={() => { setEditingCoordinator(null); setShowCoordinatorModal(true); }} onEdit={(coordinator) => { setEditingCoordinator(coordinator); setShowCoordinatorModal(true); }} onManage={openCareerAssignments} onToggle={toggleCoordinator} />}
         {view === "assignments" && accessMode === "admin" && <AdminCareerManager coordinators={coordinators} careers={careers} selectedStaffId={assignmentCoordinatorId} onSelectStaff={setAssignmentCoordinatorId} onChanged={loadBaseData} />}
-        {view === "settings" && accessMode === "admin" && <CatalogSummary careers={careers} periods={periods} staff={staff} />}
+        {view === "settings" && accessMode === "admin" && <CatalogSummary careers={careers} periods={periods} staff={staff} criteriaCount={activeCriteriaCount} />}
       </main>
 
       {showTeacherModal && selectedCoordinator && <TeacherRegistrationModal careers={assignedCareers} periods={periods} coordinatorName={selectedCoordinator.full_name} onClose={() => setShowTeacherModal(false)} onSave={saveTeacher} />}
@@ -563,7 +604,7 @@ function Header({ accessMode, view, onNewTeacher, coordinatorName }: { accessMod
   const titles: Record<View, [string, string]> = {
     dashboard: ["Panel de acompañamiento", accessMode === "admin" ? "Vista institucional completa" : `Gestión de ${coordinatorName ?? "coordinación"}`],
     teachers: ["Docentes y expedientes", "Busque por cédula, docente, carrera o asignatura"],
-    schedule: ["Cronograma institucional", "Estado general de H1–H6 por docente"],
+    schedule: ["Cronograma institucional", "Estado general de Áreas, Antes, Durante y Después"],
     reports: ["Estadísticas y reportes", "Indicadores de avance y brechas"],
     coordinators: ["Coordinadores", "Cree coordinadores y gestione posteriormente sus carreras"],
     assignments: ["Asignación de carreras", "Distribuya las carreras institucionales entre los coordinadores"],
@@ -577,7 +618,7 @@ function Dashboard({ teachers, accessMode, coordinatorCount, onViewTeachers, onO
   const certified = teachers.filter((teacher) => teacher.status === "Certificado").length;
   const gaps = teachers.reduce((sum, teacher) => sum + teacher.criticalGaps, 0);
   const average = teachers.length ? Math.round(teachers.reduce((sum, teacher) => sum + teacher.progress, 0) / teachers.length) : 0;
-  return <><div className="hero-grid"><section className="hero-card"><div className="eyebrow">Información institucional</div><h2>{teachers.length ? `${teachers.length} expediente${teachers.length === 1 ? "" : "s"} visible${teachers.length === 1 ? "" : "s"}` : "Listo para iniciar"}</h2><p>Abra un docente para trabajar ficha, cronograma, H1–H6, bitácora y plan de mejora.</p><div className="hero-progress"><div className="progress-track"><div className="progress-fill" style={{ width: `${average}%` }} /></div><strong>{average}% de avance promedio</strong></div></section><aside className="approval-card"><div className="round-icon"><FolderOpen size={20} /></div><h3>Expediente completo</h3><p>El expediente concentra el trabajo operativo y documental de cada docente.</p>{teachers[0] && <button className="secondary-button" onClick={() => onOpenTeacher(teachers[0])}>Abrir reciente <ChevronRight size={14} /></button>}</aside></div><div className="metric-grid"><Metric icon={Users} label="Docentes activos" value={String(active)} note="Procesos en curso" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Puntajes críticos menores a 3" tone="red" /><Metric icon={Clock3} label="Avance promedio" value={`${average}%`} note="Hitos ejecutados" tone="gold" /><Metric icon={accessMode === "admin" ? UserCog : ShieldCheck} label={accessMode === "admin" ? "Coordinadores" : "Certificados"} value={String(accessMode === "admin" ? coordinatorCount : certified)} note={accessMode === "admin" ? "Activos" : "Procesos finalizados"} tone="blue" /></div><section className="panel"><div className="panel-head"><div><h3>Expedientes recientes</h3><p>Abra uno para continuar el acompañamiento</p></div><button className="text-link" onClick={onViewTeachers}>Ver todos</button></div><div className="teacher-list">{teachers.length ? teachers.slice(0, 5).map((teacher) => <TeacherRow key={teacher.id} teacher={teacher} onOpen={onOpenTeacher} />) : <div className="empty-state"><h3>Sin expedientes</h3><p>No existen docentes registrados para esta vista.</p></div>}</div></section></>;
+  return <><div className="hero-grid"><section className="hero-card"><div className="eyebrow">Información institucional</div><h2>{teachers.length ? `${teachers.length} expediente${teachers.length === 1 ? "" : "s"} visible${teachers.length === 1 ? "" : "s"}` : "Listo para iniciar"}</h2><p>Abra un docente para trabajar Áreas, Antes, Durante, Después, evidencias, informes e historial.</p><div className="hero-progress"><div className="progress-track"><div className="progress-fill" style={{ width: `${average}%` }} /></div><strong>{average}% de avance promedio</strong></div></section><aside className="approval-card"><div className="round-icon"><FolderOpen size={20} /></div><h3>Expediente completo</h3><p>El expediente concentra el trabajo operativo y documental de cada docente.</p>{teachers[0] && <button className="secondary-button" onClick={() => onOpenTeacher(teachers[0])}>Abrir reciente <ChevronRight size={14} /></button>}</aside></div><div className="metric-grid"><Metric icon={Users} label="Docentes activos" value={String(active)} note="Procesos en curso" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Puntajes críticos menores a 3" tone="red" /><Metric icon={Clock3} label="Avance promedio" value={`${average}%`} note="Criterios activos resueltos" tone="gold" /><Metric icon={accessMode === "admin" ? UserCog : ShieldCheck} label={accessMode === "admin" ? "Coordinadores" : "Certificados"} value={String(accessMode === "admin" ? coordinatorCount : certified)} note={accessMode === "admin" ? "Activos" : "Procesos finalizados"} tone="blue" /></div><section className="panel"><div className="panel-head"><div><h3>Expedientes recientes</h3><p>Abra uno para continuar el acompañamiento</p></div><button className="text-link" onClick={onViewTeachers}>Ver todos</button></div><div className="teacher-list">{teachers.length ? teachers.slice(0, 5).map((teacher) => <TeacherRow key={teacher.id} teacher={teacher} onOpen={onOpenTeacher} />) : <div className="empty-state"><h3>Sin expedientes</h3><p>No existen docentes registrados para esta vista.</p></div>}</div></section></>;
 }
 
 function Metric({ icon: Icon, label, value, note, tone = "" }: { icon: typeof Users; label: string; value: string; note: string; tone?: string }) {
@@ -598,26 +639,26 @@ function TeachersPanel({ teachers, careers, canCreate, onNew, onOpen, onEditMast
     return matches && (!career || teacher.careerId === career) && (!period || teacher.period === period);
   }), [teachers, query, career, period]);
 
-  return <section className="section-card"><div className="toolbar"><div className="search"><Search size={15} /><input placeholder="Buscar cédula, docente, carrera o asignatura" value={query} onChange={(event) => setQuery(event.target.value)} /></div><div className="filters"><select className="select" value={career} onChange={(event) => setCareer(event.target.value)}><option value="">Todas las carreras</option>{careers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select className="select" value={period} onChange={(event) => setPeriod(event.target.value)}><option value="">Todos los períodos</option>{periods.map((item) => <option key={item}>{item}</option>)}</select>{canCreate && <button className="primary-button" onClick={onNew}><Plus size={14} />Registrar docente</button>}</div></div>{filtered.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Cédula</th><th>Docente</th><th>Carrera / asignatura</th><th>Período</th><th>Hito</th><th>Avance</th><th>Brechas</th><th>Acciones</th></tr></thead><tbody>{filtered.map((teacher) => <tr key={teacher.id}><td className="teacher-id-cell">{teacher.nationalId || "Pendiente"}</td><td><strong>{teacher.name}</strong><span className="row-meta">{teacher.email || "Sin correo"}</span></td><td>{teacher.career}<span className="row-meta">{teacher.subject}</span></td><td>{teacher.period}</td><td>{teacher.currentHito}</td><td>{teacher.progress}%</td><td><span className={`badge ${teacher.criticalGaps ? "red" : "green"}`}>{teacher.criticalGaps}</span></td><td><div className="filters"><button className="ghost-button" onClick={() => onEditMaster(teacher)}>Datos</button><button className="secondary-button" onClick={() => onOpen(teacher)}>Expediente <ChevronRight size={13} /></button></div></td></tr>)}</tbody></table></div> : <div className="empty-state"><h3>Sin resultados</h3><p>No hay docentes con esos filtros.</p></div>}</section>;
+  return <section className="section-card"><div className="toolbar"><div className="search"><Search size={15} /><input placeholder="Buscar cédula, docente, carrera o asignatura" value={query} onChange={(event) => setQuery(event.target.value)} /></div><div className="filters"><select className="select" value={career} onChange={(event) => setCareer(event.target.value)}><option value="">Todas las carreras</option>{careers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select className="select" value={period} onChange={(event) => setPeriod(event.target.value)}><option value="">Todos los períodos</option>{periods.map((item) => <option key={item}>{item}</option>)}</select>{canCreate && <button className="primary-button" onClick={onNew}><Plus size={14} />Registrar docente</button>}</div></div>{filtered.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Cédula</th><th>Docente</th><th>Carrera / asignatura</th><th>Período</th><th>Etapa</th><th>Avance</th><th>Brechas</th><th>Acciones</th></tr></thead><tbody>{filtered.map((teacher) => <tr key={teacher.id}><td className="teacher-id-cell">{teacher.nationalId || "Pendiente"}</td><td><strong>{teacher.name}</strong><span className="row-meta">{teacher.email || "Sin correo"}</span></td><td>{teacher.career}<span className="row-meta">{teacher.subject}</span></td><td>{teacher.period}</td><td>{teacher.currentHito}</td><td>{teacher.progress}%</td><td><span className={`badge ${teacher.criticalGaps ? "red" : "green"}`}>{teacher.criticalGaps}</span></td><td><div className="filters"><button className="ghost-button" onClick={() => onEditMaster(teacher)}>Datos</button><button className="secondary-button" onClick={() => onOpen(teacher)}>Expediente <ChevronRight size={13} /></button></div></td></tr>)}</tbody></table></div> : <div className="empty-state"><h3>Sin resultados</h3><p>No hay docentes con esos filtros.</p></div>}</section>;
 }
 
 function ScheduleOverview({ teachers, onOpen }: { teachers: Teacher[]; onOpen: (teacher: Teacher) => void }) {
-  return <section className="section-card"><div className="panel-head"><div><h3>Avance de H1–H6</h3><p>La programación detallada se edita dentro de cada expediente.</p></div></div>{teachers.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Cédula</th><th>Docente</th><th>Carrera</th><th>Hitos ejecutados</th><th>Hito actual</th><th>Avance</th><th></th></tr></thead><tbody>{teachers.map((teacher) => <tr key={teacher.id}><td className="teacher-id-cell">{teacher.nationalId || "Pendiente"}</td><td><strong>{teacher.name}</strong></td><td>{teacher.career}</td><td>{teacher.hitosExecuted}/6</td><td>{teacher.currentHito}</td><td>{teacher.progress}%</td><td><button className="secondary-button" onClick={() => onOpen(teacher)}>Programar</button></td></tr>)}</tbody></table></div> : <div className="empty-state"><p>No existen expedientes.</p></div>}</section>;
+  return <section className="section-card"><div className="panel-head"><div><h3>Avance por etapa</h3><p>Áreas, Antes, Durante y Después se actualizan con los criterios activos del expediente.</p></div></div>{teachers.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Cédula</th><th>Docente</th><th>Carrera</th><th>Etapa actual</th><th>Criterios resueltos</th><th>Avance</th><th></th></tr></thead><tbody>{teachers.map((teacher) => <tr key={teacher.id}><td className="teacher-id-cell">{teacher.nationalId || "Pendiente"}</td><td><strong>{teacher.name}</strong></td><td>{teacher.career}</td><td>{teacher.currentHito}</td><td>{teacher.resolvedCriteria}/{teacher.totalCriteria}</td><td>{teacher.progress}%</td><td><button className="secondary-button" onClick={() => onOpen(teacher)}>Abrir</button></td></tr>)}</tbody></table></div> : <div className="empty-state"><p>No existen expedientes.</p></div>}</section>;
 }
 
 function Reports({ teachers }: { teachers: Teacher[] }) {
   const certified = teachers.filter((teacher) => teacher.status === "Certificado").length;
   const gaps = teachers.reduce((sum, teacher) => sum + teacher.criticalGaps, 0);
   const average = teachers.length ? Math.round(teachers.reduce((sum, teacher) => sum + teacher.progress, 0) / teachers.length) : 0;
-  return <><div className="metric-grid"><Metric icon={Users} label="Docentes" value={String(teachers.length)} note="Expedientes visibles" /><Metric icon={Clock3} label="Avance" value={`${average}%`} note="Promedio de H1–H6" tone="gold" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Criterios evaluados < 3" tone="red" /><Metric icon={ShieldCheck} label="Certificados" value={String(certified)} note="Procesos finalizados" tone="blue" /></div><section className="section-card"><div className="panel-head"><div><h3>Avance por docente</h3><p>Información del expediente</p></div></div>{teachers.map((teacher) => <div className="teacher-row" key={teacher.id}><strong>{teacher.name}</strong><span className="row-meta">{teacher.nationalId || "Sin cédula"} · {teacher.currentHito}</span><div className="progress-cell"><div className="mini-progress"><span style={{ width: `${teacher.progress}%` }} /></div></div><span className={`badge ${statusClass(teacher.status)}`}>{teacher.progress}%</span></div>)}</section></>;
+  return <><div className="metric-grid"><Metric icon={Users} label="Docentes" value={String(teachers.length)} note="Expedientes visibles" /><Metric icon={Clock3} label="Avance" value={`${average}%`} note="Promedio de criterios resueltos" tone="gold" /><Metric icon={Activity} label="Brechas críticas" value={String(gaps)} note="Criterios evaluados < 3" tone="red" /><Metric icon={ShieldCheck} label="Certificados" value={String(certified)} note="Procesos finalizados" tone="blue" /></div><section className="section-card"><div className="panel-head"><div><h3>Avance por docente</h3><p>Información del expediente</p></div></div>{teachers.map((teacher) => <div className="teacher-row" key={teacher.id}><strong>{teacher.name}</strong><span className="row-meta">{teacher.nationalId || "Sin cédula"} · {teacher.currentHito}</span><div className="progress-cell"><div className="mini-progress"><span style={{ width: `${teacher.progress}%` }} /></div></div><span className={`badge ${statusClass(teacher.status)}`}>{teacher.progress}%</span></div>)}</section></>;
 }
 
 function CoordinatorsPanel({ coordinators, onNew, onEdit, onManage, onToggle }: { coordinators: StaffMember[]; onNew: () => void; onEdit: (coordinator: StaffMember) => void; onManage: (coordinator: StaffMember) => void; onToggle: (coordinator: StaffMember) => void }) {
   return <section className="section-card"><div className="toolbar"><div><h3>Coordinadores</h3><p className="subtitle">Cree coordinadores y gestione posteriormente las carreras asignadas a cada uno.</p></div><button className="primary-button" onClick={onNew}><Plus size={14} />Nuevo coordinador</button></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Coordinador</th><th>Carreras asignadas</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{coordinators.map((coordinator) => <tr key={coordinator.id}><td><strong>{coordinator.full_name}</strong></td><td><strong>{coordinator.careerIds.length ? `${coordinator.careerIds.length} carrera${coordinator.careerIds.length === 1 ? "" : "s"}` : "Sin carreras"}</strong><span className="row-meta">{coordinator.careerIds.length ? "Asignadas en el módulo de carreras" : "Requiere asignación"}</span></td><td><span className={`badge ${coordinator.active ? "green" : "gray"}`}>{coordinator.active ? "Activo" : "Inactivo"}</span></td><td><div className="filters"><button className="secondary-button" onClick={() => onManage(coordinator)}>{coordinator.careerIds.length ? "Carreras" : "Asignar carreras"}</button><button className="secondary-button" onClick={() => onEdit(coordinator)}>Editar</button><button className="ghost-button" onClick={() => onToggle(coordinator)}>{coordinator.active ? "Desactivar" : "Activar"}</button></div></td></tr>)}</tbody></table></div>{!coordinators.length && <div className="empty-state"><h3>Sin coordinadores</h3><p>Cree el primer coordinador para iniciar la distribución de carreras.</p></div>}</section>;
 }
 
-function CatalogSummary({ careers, periods, staff }: { careers: CatalogOption[]; periods: AcademicPeriod[]; staff: StaffMember[] }) {
-  return <div className="metric-grid"><Metric icon={Settings} label="Carreras activas" value={String(careers.length)} note="Catálogo institucional" /><Metric icon={CalendarDays} label="Períodos activos" value={String(periods.length)} note={periods[0]?.name ?? "Sin períodos"} tone="gold" /><Metric icon={UserCog} label="Coordinadores" value={String(staff.filter((item) => item.role === "coordinator" && item.active).length)} note="Activos" tone="blue" /><Metric icon={FolderOpen} label="Criterios operativos" value="75" note="H1–H6" tone="red" /></div>;
+function CatalogSummary({ careers, periods, staff, criteriaCount }: { careers: CatalogOption[]; periods: AcademicPeriod[]; staff: StaffMember[]; criteriaCount: number }) {
+  return <div className="metric-grid"><Metric icon={Settings} label="Carreras activas" value={String(careers.length)} note="Catálogo institucional" /><Metric icon={CalendarDays} label="Períodos activos" value={String(periods.length)} note={periods[0]?.name ?? "Sin períodos"} tone="gold" /><Metric icon={UserCog} label="Coordinadores" value={String(staff.filter((item) => item.role === "coordinator" && item.active).length)} note="Activos" tone="blue" /><Metric icon={FolderOpen} label="Criterios activos" value={String(criteriaCount)} note="Áreas · Antes · Durante · Después" tone="red" /></div>;
 }
 
 function CoordinatorModal({ coordinator, onClose, onSave }: { coordinator: StaffMember | null; onClose: () => void; onSave: (input: CoordinatorInput) => Promise<void> }) {

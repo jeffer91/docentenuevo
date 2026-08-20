@@ -42,6 +42,6 @@ export default function ExpedientFinalization(props: Props) {
     return <EvidenceReviewWorkspace teacher={props.teacher} coordinatorName={props.coordinatorName} />;
   }
 
-  const resolvedOperationalEvaluated = Math.min(75, props.operationalEvaluated + notApplicableCount);
+  const resolvedOperationalEvaluated = props.operationalEvaluated + notApplicableCount;
   return <LegacyFinalization {...props} operationalEvaluated={resolvedOperationalEvaluated} />;
 }

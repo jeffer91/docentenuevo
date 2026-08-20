@@ -294,6 +294,14 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
     };
   }, [criteria, scores]);
 
+  async function resolveEvaluatorStaffId() {
+    if (accessMode === "coordinator") return teacher.coordinatorId || null;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return null;
+    const { data } = await supabase.from("siacd_staff").select("id").eq("role", "admin").eq("active", true).limit(1).maybeSingle();
+    return data?.id ? String(data.id) : null;
+  }
+
   async function saveCriterion(def: CompetencyDefinition) {
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
@@ -306,6 +314,7 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
     };
     setSavingId(def.id);
     const resolved = current.not_applicable || current.score !== null;
+    const evaluatorStaffId = await resolveEvaluatorStaffId();
     const { error } = await supabase.from("competency_scores").upsert({
       expedient_id: teacher.id,
       competency_id: def.id,
@@ -313,6 +322,7 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
       not_applicable: current.not_applicable,
       coordinator_observation: current.coordinator_observation || null,
       evaluated_by: null,
+      evaluated_by_staff_id: evaluatorStaffId,
       evaluated_at: resolved ? new Date().toISOString() : null,
     }, { onConflict: "expedient_id,competency_id" });
 
@@ -359,9 +369,15 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
       const width = 178;
       const isConsolidated = reportKey === "informe_consolidado";
       const allResolved = (Object.keys(phaseSummaries) as PhaseKey[]).every((phase) => phaseSummaries[phase].resolved === phaseSummaries[phase].total && phaseSummaries[phase].total > 0);
-      const draft = isConsolidated && !allResolved;
+      const phaseResolved = isConsolidated
+        ? allResolved
+        : definition.phase
+          ? phaseSummaries[definition.phase].total > 0 && phaseSummaries[definition.phase].resolved === phaseSummaries[definition.phase].total
+          : allResolved;
+      const draft = !phaseResolved;
       const version = documents.filter((item) => item.document_type === reportKey && item.status !== "void").length + 1;
       const code = verificationCode();
+      const evaluatorStaffId = await resolveEvaluatorStaffId();
 
       const ensure = (needed = 12) => {
         if (y + needed > 276) {
@@ -417,7 +433,7 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
       metaLine("Asignatura", teacher.subject);
       metaLine("Período", teacher.period);
       metaLine("Modalidad", teacher.modality);
-      metaLine("Coordinador", coordinatorName || "—");
+      metaLine("Responsable", accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "—");
       metaLine("Fecha", formatDate(today()));
       metaLine("Versión", String(version));
 
@@ -490,6 +506,11 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
         }
       }
 
+      if (draft && definition.phase) {
+        sectionTitle("Estado del documento");
+        text(`BORRADOR: ${phaseLabels[definition.phase].title} todavía tiene criterios pendientes. Genere nuevamente el informe cuando la etapa esté completa para obtener la versión final.`, 9, true);
+      }
+
       ensure(12);
       y += 4;
       pdf.setDrawColor(180, 188, 196);
@@ -510,7 +531,7 @@ export default function ExpedientWorkspaceV6({ teacher, accessMode, coordinatorN
           storage_path: storagePath,
           verification_code: code,
           generated_by: null,
-          generated_by_staff_id: teacher.coordinatorId || null,
+          generated_by_staff_id: evaluatorStaffId,
           issued_on: today(),
           observation: `${draft ? "BORRADOR" : "OFICIAL"} · Versión ${version}`,
         });

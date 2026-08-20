@@ -119,3 +119,10 @@ supabase/migrations/
 ```
 
 Las versiones anteriores del expediente se conservan como referencia histórica y compatibilidad, pero la entrada activa utiliza V6 a través de V5.
+
+
+## Modelo activo de acompañamiento
+
+La fuente operativa vigente es el catálogo activo organizado en **Áreas → Antes → Durante → Después**. Los conteos son dinámicos y actualmente corresponden a 129 criterios activos. Las tablas y componentes de modelos anteriores se conservan únicamente para trazabilidad histórica y no participan en el cálculo institucional activo.
+
+Los cinco informes oficiales son: **Informe de Áreas, Informe Antes, Informe Durante, Informe Después e Informe Consolidado**. Cada informe se genera como **BORRADOR** mientras su etapa correspondiente tenga criterios pendientes; el Consolidado es borrador mientras exista cualquier etapa incompleta.
