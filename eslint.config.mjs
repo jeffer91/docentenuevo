@@ -13,8 +13,6 @@ const eslintConfig = defineConfig([
       "app/expedient-workspace.tsx",
       "app/expedient-workspace-v5.tsx",
       "app/expedient-workspace-v6.tsx",
-      "app/expedient-finalization.tsx",
-      "app/expedient-finalization-legacy.tsx",
       "app/teacher-master-modal.tsx",
       "app/teacher-portal.tsx",
       "app/teacher-process-portal.tsx",
@@ -34,8 +32,6 @@ const eslintConfig = defineConfig([
       "app/expedient-workspace.tsx",
       "app/expedient-workspace-v5.tsx",
       "app/expedient-workspace-v6.tsx",
-      "app/expedient-finalization.tsx",
-      "app/expedient-finalization-legacy.tsx",
     ],
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
