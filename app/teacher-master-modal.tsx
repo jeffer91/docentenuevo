@@ -42,6 +42,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
+  const managePin = canManagePin || (typeof window !== "undefined" && window.location.pathname.toLowerCase().includes("/administrador"));
   const normalizedId = normalizeCedula(nationalId);
   const warning = nationalId ? cedulaValidationWarning(nationalId) : null;
   const allowedNames = useMemo(() => new Set(careers.map((career) => normalizeDirectoryLabel(career.name))), [careers]);
@@ -85,7 +86,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
       setMessage("La cédula debe tener 9 o 10 dígitos.");
       return;
     }
-    if (canManagePin && (newPin || confirmPin || adminPin)) {
+    if (managePin && (newPin || confirmPin || adminPin)) {
       if (!/^\d{4}$/.test(newPin)) {
         setMessage("El nuevo PIN del docente debe tener exactamente 4 dígitos.");
         return;
@@ -142,7 +143,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
       return;
     }
 
-    if (canManagePin && newPin) {
+    if (managePin && newPin) {
       const { data: pinData, error: pinError } = await supabase.functions.invoke("teacher-access", {
         body: {
           action: "admin_reset_pin",
@@ -191,7 +192,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
             <div className="teacher-directory-add"><select value={careerToAdd} onChange={(event) => setCareerToAdd(event.target.value)}><option value="">Agregar carrera...</option>{careers.filter((career) => !directoryCareers.some((item) => normalizeDirectoryLabel(item) === normalizeDirectoryLabel(career.name))).map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""}</option>)}</select><button type="button" className="secondary-button" onClick={addCareer} disabled={!careerToAdd}><Plus size={13} />Agregar</button></div>
           </div>
 
-          {canManagePin && <>
+          {managePin && <>
             <div className="field full teacher-directory-careers">
               <label><KeyRound size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Acceso del docente</label>
               <div className="teacher-master-readonly">PIN actual: •••• · El PIN se guarda protegido y no puede visualizarse. El administrador sí puede reemplazarlo.</div>
