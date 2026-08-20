@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./globals.css";
 import "./admin-career-manager.css";
 import "./teacher-directory.css";
+import AccessLanding from "./access-landing";
 import AdminShell from "./admin-shell";
 import SiacdApp from "./siacd-app-v6";
 import TeacherPortal from "./teacher-portal";
@@ -18,7 +19,7 @@ const app = pathname.includes("/administrador")
     ? <SiacdApp forcedAccess="coordinator" />
     : pathname.includes("/docente")
       ? <TeacherPortal />
-      : <SiacdApp />;
+      : <AccessLanding />;
 
 createRoot(container).render(
   <React.StrictMode>
