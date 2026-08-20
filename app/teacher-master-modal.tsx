@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, KeyRound, Plus, Save, X } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Plus, Save, Trash2, X } from "lucide-react";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import {
   cedulaValidationWarning,
+  deleteDirectoryTeacher,
   mergeDirectoryCareers,
   normalizeCedula,
   normalizeDirectoryLabel,
@@ -43,6 +44,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
   const [adminPin, setAdminPin] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState("");
 
   const managePin = canManagePin || (typeof window !== "undefined" && window.location.pathname.toLowerCase().includes("/administrador"));
@@ -123,6 +125,48 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
 
     setCurrentPin(response.pin);
     setPinVisible(true);
+  }
+
+  async function deleteTeacher() {
+    if (!managePin || deleting) return;
+    const confirmed = window.confirm(
+      `¿Eliminar definitivamente a ${teacher.name}?\n\nSe eliminarán sus expedientes, evaluaciones, evidencias, acceso y sesiones de SIACD. Esta acción no se puede deshacer.`,
+    );
+    if (!confirmed) return;
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setMessage("Supabase no está configurado.");
+      return;
+    }
+
+    setDeleting(true);
+    setMessage("");
+    const { error } = await supabase.from("teachers").delete().eq("id", teacher.teacherId);
+    if (error) {
+      setDeleting(false);
+      setMessage(`No se pudo eliminar el docente: ${error.message}`);
+      return;
+    }
+
+    let firebaseIssue = false;
+    if (teacher.nationalId) {
+      try {
+        await deleteDirectoryTeacher(teacher.nationalId);
+      } catch {
+        firebaseIssue = true;
+      }
+    }
+
+    await onChanged();
+    setDeleting(false);
+
+    if (firebaseIssue) {
+      setMessage("El docente se eliminó de SIACD, pero Firebase no pudo eliminarse. Revise el directorio institucional.");
+      return;
+    }
+
+    onClose();
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -257,7 +301,11 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
           </>}
 
           {message && <div className="field full"><div className="error-note">{message}</div></div>}
-          <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={saving || !normalizedId}><Save size={14} />{saving ? "Guardando..." : "Guardar datos"}</button></div>
+          <div className="form-actions">
+            {managePin && <button type="button" className="ghost-button" onClick={deleteTeacher} disabled={deleting || saving} style={{ marginRight: "auto", color: "#9b2c2c", borderColor: "#e6b9b5", background: "#fff7f6" }}><Trash2 size={14} />{deleting ? "Eliminando..." : "Eliminar docente"}</button>}
+            <button type="button" className="ghost-button" onClick={onClose} disabled={deleting}>Cancelar</button>
+            <button className="primary-button" type="submit" disabled={saving || deleting || !normalizedId}><Save size={14} />{saving ? "Guardando..." : "Guardar datos"}</button>
+          </div>
         </form>
       </div>
     </div>
