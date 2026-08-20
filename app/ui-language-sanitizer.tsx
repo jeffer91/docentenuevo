@@ -2,19 +2,37 @@
 
 import { useEffect } from "react";
 
-const replacements: Array<[RegExp, string]> = [
-  [/\bH1\s*[·:-]?\s*/g, "Áreas · "],
-  [/\bH2\s*[·:-]?\s*/g, "Antes · "],
-  [/\bH3\s*[·:-]?\s*/g, "Durante · "],
-  [/\bH4\s*[·:-]?\s*/g, "Durante · "],
-  [/\bH5\s*[·:-]?\s*/g, "Durante · "],
-  [/\bH6\s*[·:-]?\s*/g, "Después · "],
+const exactLabels: Record<string, string> = {
+  H1: "Áreas",
+  H2: "Antes",
+  H3: "Durante",
+  H4: "Durante",
+  H5: "Durante",
+  H6: "Después",
+};
+
+const decoratedReplacements: Array<[RegExp, string]> = [
+  [/\bH1\s+[·:-]\s+/g, "Áreas · "],
+  [/\bH2\s+[·:-]\s+/g, "Antes · "],
+  [/\bH3\s+[·:-]\s+/g, "Durante · "],
+  [/\bH4\s+[·:-]\s+/g, "Durante · "],
+  [/\bH5\s+[·:-]\s+/g, "Durante · "],
+  [/\bH6\s+[·:-]\s+/g, "Después · "],
 ];
 
 function sanitizeTextNode(node: Text) {
   const original = node.nodeValue ?? "";
+  const trimmed = original.trim();
+  const exact = exactLabels[trimmed];
   let next = original;
-  for (const [pattern, replacement] of replacements) next = next.replace(pattern, replacement);
+
+  if (exact) {
+    const start = original.indexOf(trimmed);
+    next = `${original.slice(0, start)}${exact}${original.slice(start + trimmed.length)}`;
+  } else {
+    for (const [pattern, replacement] of decoratedReplacements) next = next.replace(pattern, replacement);
+  }
+
   if (next !== original) node.nodeValue = next;
 }
 
@@ -33,7 +51,8 @@ function sanitize(root: Node) {
 
 /**
  * Los códigos H1–H6 siguen existiendo como claves técnicas internas, pero no
- * forman parte del lenguaje funcional que ve el usuario.
+ * forman parte del lenguaje funcional que ve el usuario. Solo se transforman
+ * etiquetas aisladas o decoradas; nombres de archivos como H1.pdf se respetan.
  */
 export default function UiLanguageSanitizer() {
   useEffect(() => {
