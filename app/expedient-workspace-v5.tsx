@@ -1,11 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ClipboardCheck } from "lucide-react";
 import ExpedientWorkspaceV7 from "./expedient-workspace-v7";
-import ReviewCycleWorkspace from "./review-cycle-workspace";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
-import styles from "./review-cycle-launcher.module.css";
 
 type Props = {
   teacher: Teacher;
@@ -15,21 +11,11 @@ type Props = {
   onChanged: () => Promise<void> | void;
 };
 
+/**
+ * El expediente activo se concentra en Áreas / Antes / Durante / Después.
+ * El centro de revisiones histórico se conserva en código por compatibilidad,
+ * pero ya no se expone como flujo paralelo al usuario.
+ */
 export default function ExpedientWorkspaceV5(props: Props) {
-  const [showReviews, setShowReviews] = useState(false);
-
-  return <>
-    <ExpedientWorkspaceV7 {...props} />
-    <button className={styles.launcher} onClick={() => setShowReviews(true)}>
-      <ClipboardCheck size={17}/>
-      Revisiones
-    </button>
-    {showReviews && <ReviewCycleWorkspace
-      teacher={props.teacher}
-      accessMode={props.accessMode}
-      coordinatorName={props.coordinatorName}
-      onClose={() => setShowReviews(false)}
-      onChanged={props.onChanged}
-    />}
-  </>;
+  return <ExpedientWorkspaceV7 {...props} />;
 }
