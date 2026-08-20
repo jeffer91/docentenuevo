@@ -11,14 +11,12 @@ const eslintConfig = defineConfig([
       "app/siacd-app-v6.tsx",
       "app/institutional-indicators.tsx",
       "app/expedient-workspace.tsx",
-      "app/expedient-workspace-v4.tsx",
       "app/expedient-workspace-v5.tsx",
       "app/expedient-workspace-v6.tsx",
       "app/expedient-finalization.tsx",
       "app/expedient-finalization-legacy.tsx",
       "app/teacher-master-modal.tsx",
       "app/teacher-portal.tsx",
-      "app/teacher-portal-legacy.tsx",
       "app/teacher-process-portal.tsx",
       "app/teacher-evidence-hub.tsx",
       "app/teacher-evidence-panel.tsx",
@@ -34,7 +32,6 @@ const eslintConfig = defineConfig([
   {
     files: [
       "app/expedient-workspace.tsx",
-      "app/expedient-workspace-v4.tsx",
       "app/expedient-workspace-v5.tsx",
       "app/expedient-workspace-v6.tsx",
       "app/expedient-finalization.tsx",
@@ -44,18 +41,10 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
-  {
-    files: ["app/teacher-portal-legacy.tsx"],
-    rules: {
-      "@next/next/no-img-element": "off",
-    },
-  },
   globalIgnores([
     ".next/**",
     "out/**",
-    "build/**",
-    "next-env.d.ts",
-    "app/siacd-app-v2.tsx",
+    "pages-dist/**",
     "supabase/functions/**",
   ]),
 ]);
