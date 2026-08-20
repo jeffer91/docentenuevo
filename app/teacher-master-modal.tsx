@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { KeyRound, Plus, Save, X } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Plus, Save, X } from "lucide-react";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import {
   cedulaValidationWarning,
@@ -35,6 +35,9 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
   const [entryDate, setEntryDate] = useState(teacher.entryDate);
   const [directoryCareers, setDirectoryCareers] = useState<string[]>([]);
   const [careerToAdd, setCareerToAdd] = useState("");
+  const [currentPin, setCurrentPin] = useState("");
+  const [pinVisible, setPinVisible] = useState(false);
+  const [pinLoading, setPinLoading] = useState(false);
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [adminPin, setAdminPin] = useState("");
@@ -79,6 +82,49 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
     setDirectoryCareers((current) => current.filter((item) => normalizeDirectoryLabel(item) !== normalizeDirectoryLabel(career)));
   }
 
+  async function revealCurrentPin() {
+    if (!/^\d{4}$/.test(adminPin)) {
+      setMessage("Ingrese la clave de administrador de 4 dígitos para ver el PIN del docente.");
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setMessage("Supabase no está configurado.");
+      return;
+    }
+
+    if (currentPin) {
+      setPinVisible((visible) => !visible);
+      return;
+    }
+
+    setPinLoading(true);
+    setMessage("");
+    const { data, error } = await supabase.functions.invoke("teacher-access", {
+      body: {
+        action: "admin_get_pin",
+        teacher_id: teacher.teacherId,
+        admin_pin: adminPin,
+      },
+    });
+    setPinLoading(false);
+
+    const response = data as { ok?: boolean; pin?: string; error?: string } | null;
+    if (error || !response?.ok || !response.pin) {
+      if (response?.error === "invalid_admin_pin") {
+        setMessage("La clave de administrador no es correcta.");
+      } else if (response?.error === "pin_not_set") {
+        setMessage("Este docente todavía no ha creado un PIN.");
+      } else {
+        setMessage("No se pudo consultar el PIN actual del docente.");
+      }
+      return;
+    }
+
+    setCurrentPin(response.pin);
+    setPinVisible(true);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cedula = normalizeCedula(nationalId);
@@ -86,7 +132,7 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
       setMessage("La cédula debe tener 9 o 10 dígitos.");
       return;
     }
-    if (managePin && (newPin || confirmPin || adminPin)) {
+    if (managePin && (newPin || confirmPin)) {
       if (!/^\d{4}$/.test(newPin)) {
         setMessage("El nuevo PIN del docente debe tener exactamente 4 dígitos.");
         return;
@@ -152,18 +198,20 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
           new_pin: newPin,
         },
       });
-      const serviceError = (pinData as { error?: string } | null)?.error;
-      if (pinError || serviceError) {
+      const response = pinData as { ok?: boolean; pin?: string; error?: string } | null;
+      if (pinError || !response?.ok) {
         setSaving(false);
-        if (serviceError === "invalid_admin_pin") {
+        if (response?.error === "invalid_admin_pin") {
           setMessage("Los datos del docente se guardaron, pero la clave de administrador no es correcta y el PIN no se cambió.");
-        } else if (serviceError === "teacher_email_required") {
+        } else if (response?.error === "teacher_email_required") {
           setMessage("Los datos se guardaron, pero para crear el PIN el docente debe tener un correo válido.");
         } else {
           setMessage("Los datos se guardaron, pero no se pudo cambiar el PIN del docente.");
         }
         return;
       }
+      setCurrentPin(response.pin ?? newPin);
+      setPinVisible(true);
     }
 
     await onChanged();
@@ -195,11 +243,17 @@ export default function TeacherMasterModal({ teacher, careers, canManagePin = fa
           {managePin && <>
             <div className="field full teacher-directory-careers">
               <label><KeyRound size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Acceso del docente</label>
-              <div className="teacher-master-readonly">PIN actual: •••• · El PIN se guarda protegido y no puede visualizarse. El administrador sí puede reemplazarlo.</div>
+              <div className="teacher-directory-add">
+                <input readOnly type={pinVisible ? "text" : "password"} value={currentPin || "0000"} aria-label="PIN actual del docente" />
+                <button type="button" className="secondary-button" onClick={revealCurrentPin} disabled={pinLoading}>
+                  {pinVisible ? <EyeOff size={14} /> : <Eye size={14} />}{pinLoading ? "Consultando..." : currentPin && pinVisible ? "Ocultar PIN" : "Ver PIN"}
+                </button>
+              </div>
+              <small>Para consultar o cambiar el PIN, ingrese primero la clave de administrador.</small>
             </div>
+            <div className="field full"><label>Clave de administrador</label><input type="password" inputMode="numeric" maxLength={4} value={adminPin} onChange={(event) => { setAdminPin(event.target.value.replace(/\D/g, "").slice(0, 4)); setCurrentPin(""); setPinVisible(false); }} placeholder="4 dígitos" autoComplete="off" /></div>
             <div className="field"><label>Nuevo PIN</label><input type="password" inputMode="numeric" maxLength={4} value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4 dígitos" autoComplete="new-password" /></div>
             <div className="field"><label>Confirmar nuevo PIN</label><input type="password" inputMode="numeric" maxLength={4} value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Repita el PIN" autoComplete="new-password" /></div>
-            <div className="field full"><label>Clave de administrador para autorizar el cambio</label><input type="password" inputMode="numeric" maxLength={4} value={adminPin} onChange={(event) => setAdminPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Solo necesaria si cambia el PIN" autoComplete="off" /></div>
           </>}
 
           {message && <div className="field full"><div className="error-note">{message}</div></div>}
