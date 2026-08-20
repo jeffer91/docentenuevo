@@ -62,7 +62,20 @@ export default function TeacherCedulaAccess({ onAuthenticated }: { onAuthenticat
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return { data: null as AccessResponse | null, error: true };
     const result = await supabase.functions.invoke("teacher-access", { body });
-    return { data: result.data as AccessResponse | null, error: Boolean(result.error) };
+    let data = result.data as AccessResponse | null;
+
+    if (!data && result.error) {
+      const context = (result.error as { context?: unknown }).context;
+      if (context instanceof Response) {
+        try {
+          data = await context.clone().json() as AccessResponse;
+        } catch {
+          data = null;
+        }
+      }
+    }
+
+    return { data, error: Boolean(result.error) };
   }
 
   async function loadFirstRegistration() {
@@ -162,6 +175,13 @@ export default function TeacherCedulaAccess({ onAuthenticated }: { onAuthenticat
     }
     if (data?.error === "identity_conflict") {
       setMessage("La cédula ya está asociada a otro registro. Solicite revisión al coordinador.");
+      return;
+    }
+    if (data?.error === "session_creation_failed") {
+      setPin("");
+      setConfirmPin("");
+      setMode("login");
+      setMessage("Sus datos y su PIN se guardaron correctamente. Ingrese ahora con su cédula y PIN.");
       return;
     }
     setMessage("No se pudo completar el registro. Revise los datos e intente nuevamente.");
