@@ -73,6 +73,7 @@ type ClosedReview = {
   failed: number;
   not_applicable: number;
   percent: number | null;
+  model_scope?: "current" | "historical";
   failed_items: Array<{
     criterion_type: string;
     criterion_id: string;
@@ -216,12 +217,22 @@ export default function TeacherProcessPortal({ token }: { token: string }) {
     if (selectedExpedientId) void loadDetail(selectedExpedientId);
   }, [loadDetail, selectedExpedientId]);
 
-  const latestReview = useMemo(() => detail?.closed_reviews?.[0] ?? null, [detail]);
+  const latestReview = useMemo(
+    () => detail?.closed_reviews?.find((review) => review.model_scope !== "historical" && review.percent !== null) ?? null,
+    [detail],
+  );
 
-  function logout() {
-    window.localStorage.removeItem(DEVICE_TOKEN_KEY);
-    setSession(null);
-    window.location.reload();
+  async function logout() {
+    const supabase = getSupabaseBrowserClient();
+    try {
+      if (supabase && token) {
+        await supabase.rpc("teacher_revoke_device", { p_token: token });
+      }
+    } finally {
+      window.localStorage.removeItem(DEVICE_TOKEN_KEY);
+      setSession(null);
+      window.location.reload();
+    }
   }
 
   if (loading && !detail) {
@@ -236,7 +247,7 @@ export default function TeacherProcessPortal({ token }: { token: string }) {
           <h1>{session ? `Bienvenido, ${session.full_name}` : "Acompañamiento docente"}</h1>
           <p>{session?.email ?? ""}</p>
         </div>
-        <button className={styles.logout} onClick={logout}><LogOut size={16}/>Cerrar sesión</button>
+        <button className={styles.logout} onClick={() => void logout()}><LogOut size={16}/>Cerrar sesión</button>
       </header>
 
       {message && <section className={styles.infoBanner}><CheckCircle2 size={20}/><div><strong>Información</strong><span>{message}</span></div></section>}
@@ -262,7 +273,7 @@ export default function TeacherProcessPortal({ token }: { token: string }) {
           <section className={styles.quickGrid}>
             <article className={styles.quickCard}><Target size={19}/><span>Momento actual</span><strong>{phaseLabels[detail.current_phase] ?? "Áreas"}</strong></article>
             <article className={styles.quickCard}><ListChecks size={19}/><span>Mis pendientes</span><strong>{detail.pending_actions.length}</strong><small>{detail.pending_actions.length === 1 ? "acción pendiente" : "acciones pendientes"}</small></article>
-            <article className={styles.quickCard}><CheckCircle2 size={19}/><span>Último resultado</span><strong>{latestReview?.percent === null || latestReview?.percent === undefined ? "—" : `${latestReview.percent}%`}</strong><small>{latestReview ? `${latestReview.passed} cumplen · ${latestReview.failed} por mejorar` : "Aún no hay revisión cerrada"}</small></article>
+            <article className={styles.quickCard}><CheckCircle2 size={19}/><span>Último resultado</span><strong>{latestReview?.percent === null || latestReview?.percent === undefined ? "—" : `${latestReview.percent}%`}</strong><small>{latestReview ? `${latestReview.passed} cumplen · ${latestReview.failed} por mejorar` : "Aún no hay revisión del modelo vigente"}</small></article>
             <article className={styles.quickCard}><Clock3 size={19}/><span>Próxima revisión</span><strong>{detail.next_review?.scheduled_on ? formatDate(detail.next_review.scheduled_on) : "Sin programar"}</strong><small>{detail.next_review?.title ?? "Coordinación definirá la fecha"}</small></article>
           </section>
 
@@ -307,7 +318,7 @@ export default function TeacherProcessPortal({ token }: { token: string }) {
           {portalTab === "reviews" && (
             <section className={styles.section}>
               <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Resultados publicados</span><h2>Mis revisiones</h2></div><span>{detail.closed_reviews.length}</span></div>
-              {detail.closed_reviews.length ? <div className={styles.reviewList}>{detail.closed_reviews.map((review) => <article key={review.id} className={styles.reviewCard}><header><div><span>{review.phase ? phaseLabels[review.phase] : review.hito_id ?? "Revisión"}</span><h3>{review.title}</h3><small>Cerrada {formatDate(review.closed_at)}</small></div><strong>{review.percent === null ? "—" : `${review.percent}%`}</strong></header><div className={styles.reviewStats}><span><b>{review.passed}</b>Cumplen</span><span><b>{review.failed}</b>Por mejorar</span><span><b>{review.not_applicable}</b>No aplica</span><span><b>{review.evaluated}</b>Evaluados</span></div>{review.failed_items.length > 0 && <div className={styles.reviewIssues}>{review.failed_items.slice(0, 8).map((item) => <div key={`${review.id}-${item.criterion_type}-${item.criterion_id}`}><strong>{item.criterion_id}</strong><span>{item.observation || "Requiere mejora."}</span></div>)}</div>}</article>)}</div> : <div className={styles.empty}>Aún no existen revisiones cerradas.</div>}
+              {detail.closed_reviews.length ? <div className={styles.reviewList}>{detail.closed_reviews.map((review) => <article key={review.id} className={styles.reviewCard}><header><div><span>{review.model_scope === "historical" ? "Histórico · " : ""}{review.phase ? phaseLabels[review.phase] : review.hito_id ?? "Revisión"}</span><h3>{review.title}</h3><small>Cerrada {formatDate(review.closed_at)}</small></div><strong>{review.model_scope === "historical" ? "Histórico" : review.percent === null ? "—" : `${review.percent}%`}</strong></header><div className={styles.reviewStats}><span><b>{review.passed}</b>Cumplen</span><span><b>{review.failed}</b>Por mejorar</span><span><b>{review.not_applicable}</b>No aplica</span><span><b>{review.evaluated}</b>Evaluados</span></div>{review.failed_items.length > 0 && <div className={styles.reviewIssues}>{review.failed_items.slice(0, 8).map((item) => <div key={`${review.id}-${item.criterion_type}-${item.criterion_id}`}><strong>{item.criterion_id}</strong><span>{item.observation || "Requiere mejora."}</span></div>)}</div>}</article>)}</div> : <div className={styles.empty}>Aún no existen revisiones cerradas.</div>}
             </section>
           )}
 
