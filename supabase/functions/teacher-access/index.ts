@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FIREBASE_DATABASE_URL = "https://repaso-fire-d8ceb-default-rtdb.firebaseio.com";
+const ADMIN_PIN_HASH = "e6955a2c59dc90833986fe0894cf6718dddaa7816bb51bc955cdd3eb4470e554";
 
 const allowedOrigins = new Set([
   "https://docentenuevo.pages.dev",
@@ -60,6 +61,12 @@ function parseCareers(value: unknown): string[] {
     return Object.values(value as Record<string, unknown>).filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
   }
   return [];
+}
+
+async function sha256Hex(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 type TeacherRow = {
@@ -135,12 +142,58 @@ Deno.serve(async (req: Request) => {
   }
 
   const action = String(payload.action ?? "status");
-  const cedula = normalizeCedula(payload.cedula);
-  if (!cedula) return json(req, { ok: false, error: "invalid_national_id" }, 400);
-
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  if (action === "admin_reset_pin") {
+    const adminPin = String(payload.admin_pin ?? "");
+    const newPin = String(payload.new_pin ?? "");
+    const teacherId = typeof payload.teacher_id === "string" ? payload.teacher_id : "";
+
+    if (!/^\d{4}$/.test(adminPin) || await sha256Hex(adminPin) !== ADMIN_PIN_HASH) {
+      return json(req, { ok: false, error: "invalid_admin_pin" }, 403);
+    }
+    if (!/^\d{4}$/.test(newPin)) return json(req, { ok: false, error: "invalid_pin" }, 400);
+    if (!teacherId) return json(req, { ok: false, error: "teacher_not_found" }, 404);
+
+    const { data: teacher } = await supabase
+      .from("teachers")
+      .select("id, institutional_email")
+      .eq("id", teacherId)
+      .eq("active", true)
+      .maybeSingle();
+    if (!teacher?.id) return json(req, { ok: false, error: "teacher_not_found" }, 404);
+
+    let email = normalizeEmail(teacher.institutional_email);
+    if (!validEmail(email)) {
+      const { data: access } = await supabase
+        .from("teacher_access")
+        .select("email")
+        .eq("teacher_id", teacherId)
+        .maybeSingle();
+      email = normalizeEmail(access?.email);
+    }
+    if (!validEmail(email)) return json(req, { ok: false, error: "teacher_email_required" }, 409);
+
+    const { data: changed, error: changeError } = await supabase.rpc("teacher_register_pin", {
+      p_teacher_id: teacherId,
+      p_email: email,
+      p_pin: newPin,
+    });
+    if (changeError || changed !== true) return json(req, { ok: false, error: "pin_reset_failed" }, 409);
+
+    await supabase
+      .from("teacher_device_sessions")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("teacher_id", teacherId)
+      .is("revoked_at", null);
+
+    return json(req, { ok: true, pin_changed: true });
+  }
+
+  const cedula = normalizeCedula(payload.cedula);
+  if (!cedula) return json(req, { ok: false, error: "invalid_national_id" }, 400);
 
   if (action === "login") {
     const pin = String(payload.pin ?? "");
