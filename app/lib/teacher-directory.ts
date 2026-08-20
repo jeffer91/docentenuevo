@@ -177,6 +177,15 @@ export async function writeDirectoryTeacher(input: Omit<DirectoryTeacher, "roles
   if (!response.ok) throw new Error(`Firebase respondió ${response.status}`);
 }
 
+export async function deleteDirectoryTeacher(value: string): Promise<void> {
+  const cedula = normalizeCedula(value);
+  if (!cedula) return;
+  const response = await fetch(`${FIREBASE_DATABASE_URL}/${DIRECTORY_NODE}/${cedula}.json`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error(`Firebase respondió ${response.status}`);
+}
+
 export function newestName(options: {
   firebaseName?: string;
   firebaseUpdatedAt?: string;
