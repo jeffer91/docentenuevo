@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { BarChart3 } from "lucide-react";
 import TeacherCedulaAccess from "./teacher-cedula-access";
 import TeacherIndicators from "./teacher-indicators";
-import TeacherProcessPortalV2 from "./teacher-process-portal-v2";
+import TeacherProcessPortal from "./teacher-process-portal";
+import TeacherProcessAutoOpen from "./teacher-process-auto-open";
 import styles from "./teacher-portal-shell.module.css";
 
 const DEVICE_TOKEN_KEY = "siacd-teacher-device-token";
@@ -30,7 +31,8 @@ export default function TeacherPortal() {
   if (!token) return <TeacherCedulaAccess onAuthenticated={setToken} />;
 
   return <>
-    <TeacherProcessPortalV2 token={token} />
+    <TeacherProcessAutoOpen />
+    <TeacherProcessPortal token={token} />
     <button className={styles.indicatorButton} onClick={() => setShowIndicators(true)}><BarChart3 size={17}/>Mis indicadores</button>
     {showIndicators && <TeacherIndicators token={token} onClose={() => setShowIndicators(false)} />}
   </>;
