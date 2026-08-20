@@ -1,33 +1,44 @@
 import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const dist = path.join(root, "pages-dist");
 
-test("renders development preview metadata", async () => {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+async function read(relativePath) {
+  return readFile(path.join(dist, relativePath), "utf8");
+}
 
-  const response = await worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+async function bundledJavascript() {
+  const assets = path.join(dist, "assets");
+  const names = await readdir(assets);
+  const jsFiles = names.filter((name) => name.endsWith(".js"));
+  return (await Promise.all(jsFiles.map((name) => readFile(path.join(assets, name), "utf8")))).join("\n");
+}
 
-  assert.equal(response.status, 200);
-  assert.match(
-    response.headers.get("content-type") ?? "",
-    /^text\/html\b/i,
-  );
-  assert.match(await response.text(), developmentPreviewMeta);
+test("genera los cuatro accesos públicos", async () => {
+  const routes = ["index.html", "docente/index.html", "coordinador/index.html", "administrador/index.html"];
+  for (const route of routes) {
+    const html = await read(route);
+    assert.match(html, /<div id="root"><\/div>/);
+    assert.match(html, /<script[^>]+type="module"/);
+  }
+});
+
+test("la portada general expone los tres perfiles", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Acceso Docentes/);
+  assert.match(js, /Acceso Coordinadores/);
+  assert.match(js, /Acceso Administrador/);
+});
+
+test("el bundle contiene la organización vigente", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Áreas/);
+  assert.match(js, /Antes/);
+  assert.match(js, /Durante/);
+  assert.match(js, /Después/);
+  assert.match(js, /Informe Consolidado/);
 });
