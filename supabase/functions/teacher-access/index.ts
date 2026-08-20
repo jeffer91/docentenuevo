@@ -69,6 +69,46 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function bytesToBase64(bytes: Uint8Array) {
+  return btoa(String.fromCharCode(...bytes));
+}
+
+function base64ToBytes(value: string) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
+async function adminPinKey() {
+  const raw = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${SERVICE_ROLE_KEY}:siacd-teacher-pin-admin:v1`),
+  );
+  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+
+async function encryptAdminPin(pin: string) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await adminPinKey();
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    new TextEncoder().encode(pin),
+  );
+  return {
+    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
+    iv: bytesToBase64(iv),
+  };
+}
+
+async function decryptAdminPin(ciphertext: string, iv: string) {
+  const key = await adminPinKey();
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(iv) },
+    key,
+    base64ToBytes(ciphertext),
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
 type TeacherRow = {
   id: string;
   full_name: string | null;
@@ -146,14 +186,66 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  async function storeRecoverablePin(teacherId: string, pin: string) {
+    try {
+      const encrypted = await encryptAdminPin(pin);
+      const { error } = await supabase
+        .from("teacher_access")
+        .update({
+          pin_admin_ciphertext: encrypted.ciphertext,
+          pin_admin_iv: encrypted.iv,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("teacher_id", teacherId);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  async function validAdminPin(value: unknown) {
+    const adminPin = String(value ?? "");
+    return /^\d{4}$/.test(adminPin) && await sha256Hex(adminPin) === ADMIN_PIN_HASH;
+  }
+
+  if (action === "admin_get_pin") {
+    const teacherId = typeof payload.teacher_id === "string" ? payload.teacher_id : "";
+    if (!await validAdminPin(payload.admin_pin)) return json(req, { ok: false, error: "invalid_admin_pin" }, 403);
+    if (!teacherId) return json(req, { ok: false, error: "teacher_not_found" }, 404);
+
+    const { data: access } = await supabase
+      .from("teacher_access")
+      .select("pin_hash, pin_admin_ciphertext, pin_admin_iv, active")
+      .eq("teacher_id", teacherId)
+      .maybeSingle();
+
+    if (!access?.active || !access.pin_hash) return json(req, { ok: false, error: "pin_not_set" }, 404);
+
+    if (access.pin_admin_ciphertext && access.pin_admin_iv) {
+      try {
+        const pin = await decryptAdminPin(access.pin_admin_ciphertext, access.pin_admin_iv);
+        if (/^\d{4}$/.test(pin)) return json(req, { ok: true, pin });
+      } catch {
+        // Continúa con compatibilidad para registros previos.
+      }
+    }
+
+    const { data: recovered, error: recoverError } = await supabase.rpc("teacher_recover_pin_service", {
+      p_teacher_id: teacherId,
+    });
+    const recoveredPin = typeof recovered === "string" ? recovered : "";
+    if (recoverError || !/^\d{4}$/.test(recoveredPin)) return json(req, { ok: false, error: "pin_unavailable" }, 409);
+
+    await storeRecoverablePin(teacherId, recoveredPin);
+    return json(req, { ok: true, pin: recoveredPin });
+  }
+
   if (action === "admin_reset_pin") {
     const adminPin = String(payload.admin_pin ?? "");
     const newPin = String(payload.new_pin ?? "");
     const teacherId = typeof payload.teacher_id === "string" ? payload.teacher_id : "";
 
-    if (!/^\d{4}$/.test(adminPin) || await sha256Hex(adminPin) !== ADMIN_PIN_HASH) {
-      return json(req, { ok: false, error: "invalid_admin_pin" }, 403);
-    }
+    if (!await validAdminPin(adminPin)) return json(req, { ok: false, error: "invalid_admin_pin" }, 403);
     if (!/^\d{4}$/.test(newPin)) return json(req, { ok: false, error: "invalid_pin" }, 400);
     if (!teacherId) return json(req, { ok: false, error: "teacher_not_found" }, 404);
 
@@ -183,13 +275,15 @@ Deno.serve(async (req: Request) => {
     });
     if (changeError || changed !== true) return json(req, { ok: false, error: "pin_reset_failed" }, 409);
 
+    await storeRecoverablePin(teacherId, newPin);
+
     await supabase
       .from("teacher_device_sessions")
       .update({ revoked_at: new Date().toISOString() })
       .eq("teacher_id", teacherId)
       .is("revoked_at", null);
 
-    return json(req, { ok: true, pin_changed: true });
+    return json(req, { ok: true, pin_changed: true, pin: newPin });
   }
 
   const cedula = normalizeCedula(payload.cedula);
@@ -339,6 +433,8 @@ Deno.serve(async (req: Request) => {
     p_pin: pin,
   });
   if (pinError || pinRegistered !== true) return json(req, { ok: false, error: "pin_registration_failed" }, 409);
+
+  await storeRecoverablePin(teacher.id, pin);
 
   try {
     await fetch(`${FIREBASE_DATABASE_URL}/docentes-registrados/${encodeURIComponent(cedula)}.json`, {
