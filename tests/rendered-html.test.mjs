@@ -42,3 +42,19 @@ test("el bundle contiene la organización vigente", async () => {
   assert.match(js, /Después/);
   assert.match(js, /Informe Consolidado/);
 });
+
+test("el portal docente incluye el desglose y carga de evidencias", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Evidencias por criterio/);
+  assert.match(js, /Pegue aquí su captura/);
+  assert.match(js, /Ctrl\+V/);
+  assert.match(js, /máximo 3 evidencias/i);
+  assert.match(js, /Informes formales/);
+});
+
+test("el flujo legado de seis hitos no forma parte de la interfaz publicada", async () => {
+  const js = await bundledJavascript();
+  assert.doesNotMatch(js, /Mi proceso completo/);
+  assert.doesNotMatch(js, /0\/6 hitos validados/);
+  assert.doesNotMatch(js, /H4 · Seguimiento 1/);
+});
