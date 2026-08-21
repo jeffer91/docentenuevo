@@ -22,6 +22,7 @@ import { getSupabaseBrowserClient } from "./lib/supabase";
 import styles from "./teacher-criterion-evidence-workspace.module.css";
 
 export type TeacherEvidencePhase = "areas" | "before" | "during" | "after";
+type CriterionMode = "check" | "evidence";
 
 type EvidenceItem = {
   id: string;
@@ -74,6 +75,7 @@ type Criterion = {
   hito_id: string;
   process: string;
   label: string;
+  mode: CriterionMode;
   criticality: string;
   expected_evidence: string | null;
   score: Score | null;
@@ -126,11 +128,13 @@ function criterionState(criterion: Criterion) {
   if (criterion.score?.not_applicable || criterion.na_request?.status === "approved") {
     return { key: "naApproved", label: "No aplica aprobado" } as const;
   }
-  if (criterion.score?.score !== null && criterion.score?.score !== undefined && criterion.score.score >= 3) {
-    return { key: "approved", label: "Aprobado" } as const;
-  }
-  if (criterion.request?.status === "approved") return { key: "approved", label: "Aprobado" } as const;
+  if ((criterion.score?.score ?? -1) >= 3) return { key: "approved", label: "Aprobado" } as const;
   if (criterion.na_request?.status === "pending") return { key: "naPending", label: "No aplica solicitado" } as const;
+  if (criterion.score?.evaluated_at && (criterion.score.score ?? 3) < 3) {
+    return { key: "correction", label: criterion.mode === "check" ? "Requiere ajuste" : "Requiere corrección" } as const;
+  }
+  if (criterion.mode === "check") return { key: "pending", label: "Pendiente de verificación" } as const;
+  if (criterion.request?.status === "approved") return { key: "approved", label: "Aprobado" } as const;
   if (criterion.request?.status === "correction_required") return { key: "correction", label: "Requiere corrección" } as const;
   if (criterion.request?.status === "submitted" || criterion.request?.status === "in_review") {
     return { key: "submitted", label: "Enviado · pendiente de revisión" } as const;
@@ -139,10 +143,11 @@ function criterionState(criterion: Criterion) {
 }
 
 function latestSubmission(criterion: Criterion) {
-  return criterion.request?.submissions?.[0] ?? null;
+  return criterion.mode === "evidence" ? criterion.request?.submissions?.[0] ?? null : null;
 }
 
 function canEditLatest(criterion: Criterion) {
+  if (criterion.mode !== "evidence") return false;
   const latest = latestSubmission(criterion);
   return Boolean(
     latest
@@ -188,7 +193,7 @@ export default function TeacherCriterionEvidenceWorkspace({
     });
     setLoading(false);
     if (error || !result) {
-      setMessage("No se pudo cargar el espacio de evidencias.");
+      setMessage("No se pudo cargar su proceso.");
       return;
     }
     setData(result as WorkspaceData);
@@ -203,14 +208,15 @@ export default function TeacherCriterionEvidenceWorkspace({
 
   const phaseMetrics = useMemo(() => Object.fromEntries(phaseOrder.map((item) => {
     const criteria = data.criteria.filter((criterion) => phaseForHito(criterion.hito_id) === item);
-    const sent = criteria.filter((criterion) => Boolean(criterion.request?.submissions?.length)).length;
+    const evidenceCriteria = criteria.filter((criterion) => criterion.mode === "evidence");
+    const sent = evidenceCriteria.filter((criterion) => Boolean(criterion.request?.submissions?.length)).length;
     const approved = criteria.filter((criterion) => {
       const state = criterionState(criterion);
       return state.key === "approved" || state.key === "naApproved";
     }).length;
     const corrections = criteria.filter((criterion) => criterionState(criterion).key === "correction").length;
-    return [item, { total: criteria.length, sent, approved, corrections }];
-  })) as Record<TeacherEvidencePhase, { total: number; sent: number; approved: number; corrections: number }>, [data.criteria]);
+    return [item, { total: criteria.length, evidenceTotal: evidenceCriteria.length, sent, approved, corrections }];
+  })) as Record<TeacherEvidencePhase, { total: number; evidenceTotal: number; sent: number; approved: number; corrections: number }>, [data.criteria]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Criterion[]>();
@@ -231,9 +237,8 @@ export default function TeacherCriterionEvidenceWorkspace({
   }
 
   function addFiles(criterion: Criterion, incoming: File[]) {
-    const current = currentCount(criterion);
-    const alreadyStaged = stagedCount(criterion.id);
-    const available = MAX_ITEMS - current - alreadyStaged;
+    if (criterion.mode !== "evidence") return;
+    const available = MAX_ITEMS - currentCount(criterion) - stagedCount(criterion.id);
     if (available <= 0) {
       setMessage("Cada entrega admite máximo 3 evidencias.");
       return;
@@ -271,11 +276,12 @@ export default function TeacherCriterionEvidenceWorkspace({
   }
 
   function addLink(criterion: Criterion) {
+    if (criterion.mode !== "evidence") return;
     const value = (linkDraft[criterion.id] ?? "").trim();
     if (!value) return;
     try {
       const url = new URL(value);
-      if (!['http:', 'https:'].includes(url.protocol)) throw new Error("invalid");
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("invalid");
     } catch {
       setMessage("Ingrese un enlace válido que empiece con http:// o https://.");
       return;
@@ -295,6 +301,7 @@ export default function TeacherCriterionEvidenceWorkspace({
   }
 
   async function submitEvidence(criterion: Criterion) {
+    if (criterion.mode !== "evidence") return;
     const request = criterion.request;
     if (!request) return setMessage("Este criterio todavía no tiene un espacio de evidencia disponible.");
     const selectedFiles = files[criterion.id] ?? [];
@@ -440,7 +447,7 @@ export default function TeacherCriterionEvidenceWorkspace({
 
   return <div className={styles.root}>
     <div className={styles.topline}>
-      <div><span>MI PROCESO</span><h2>Evidencias por criterio</h2><p>En cada criterio puede pegar una captura con Ctrl+V, arrastrar archivos, seleccionarlos o agregar un enlace.</p></div>
+      <div><span>MI PROCESO</span><h2>Criterios de acompañamiento</h2><p>Los criterios CHECK los verifica directamente coordinación. Solo los criterios EVIDENCIA requieren que adjunte archivos, capturas o enlaces.</p></div>
       <button className={styles.refresh} onClick={() => void load()}><RefreshCw size={15}/>Actualizar</button>
     </div>
 
@@ -459,7 +466,7 @@ export default function TeacherCriterionEvidenceWorkspace({
 
     <section className={styles.phaseSummary}>
       <div><span>Etapa</span><strong>{phaseLabels[phase]}</strong></div>
-      <div><span>Evidencias enviadas</span><strong>{phaseMetrics[phase].sent}/{phaseMetrics[phase].total}</strong></div>
+      <div><span>Evidencias enviadas</span><strong>{phaseMetrics[phase].sent}/{phaseMetrics[phase].evidenceTotal}</strong></div>
       <div><span>Criterios aprobados</span><strong>{phaseMetrics[phase].approved}/{phaseMetrics[phase].total}</strong></div>
       <div><span>Por corregir</span><strong>{phaseMetrics[phase].corrections}</strong></div>
     </section>
@@ -478,21 +485,30 @@ export default function TeacherCriterionEvidenceWorkspace({
             const canAdd = existingCount + totalDraftCount < MAX_ITEMS;
             const naPending = criterion.na_request?.status === "pending";
             const blocked = state.key === "approved" || state.key === "naApproved" || naPending;
+
             return <article className={`${styles.criterion} ${styles[state.key] ?? ""}`} key={criterion.id}>
               <button className={styles.criterionHead} onClick={() => setOpenCriterion(expanded ? "" : criterion.id)}>
                 <div className={styles.criterionIdentity}>
                   <span className={styles.code}>{criterion.id}</span>
-                  <div><strong>{criterion.label}</strong><small>{criterion.expected_evidence ? `Evidencia esperada: ${criterion.expected_evidence}` : "Adjunte una evidencia que permita verificar este criterio."}</small></div>
+                  <div>
+                    <strong>{criterion.label}</strong>
+                    <small>{criterion.mode === "check" ? "CHECK · no requiere cargar evidencia" : criterion.expected_evidence ? `EVIDENCIA · ${criterion.expected_evidence}` : "EVIDENCIA · adjunte un archivo, captura o enlace"}</small>
+                  </div>
                 </div>
-                <div className={styles.criterionState}><span>{state.label}</span><b>{latest?.items?.length ? `${latest.items.length}/3` : "0/3"}</b></div>
+                <div className={styles.criterionState}><span>{state.label}</span><b>{criterion.mode === "check" ? "CHECK" : latest?.items?.length ? `${latest.items.length}/3` : "0/3"}</b></div>
               </button>
 
               {expanded && <div className={styles.criterionBody}>
-                {criterion.na_request?.status === "rejected" && <div className={styles.reviewNote}><RotateCcw size={15}/><div><strong>Solicitud de No aplica rechazada</strong><p>{criterion.na_request.review_comment || "Coordinación indicó que debe presentar evidencia."}</p></div></div>}
+                {criterion.na_request?.status === "rejected" && <div className={styles.reviewNote}><RotateCcw size={15}/><div><strong>Solicitud de No aplica rechazada</strong><p>{criterion.na_request.review_comment || "Coordinación indicó que este criterio sí corresponde."}</p></div></div>}
                 {criterion.na_request?.status === "pending" && <div className={styles.naPendingBox}><ClockIcon/><div><strong>Solicitud de No aplica pendiente</strong><p>{criterion.na_request.justification}</p></div><button disabled={busy === `na-cancel-${criterion.id}`} onClick={() => void cancelNotApplicable(criterion)}>Cancelar solicitud</button></div>}
                 {state.key === "naApproved" && <div className={styles.approvedBox}><CheckCircle2 size={17}/><div><strong>No aplica aprobado</strong><p>{criterion.na_request?.review_comment || criterion.score?.observation || "Coordinación aprobó la justificación."}</p></div></div>}
 
-                {latest && <div className={styles.currentSubmission}>
+                {criterion.mode === "check" && <div className={state.key === "approved" ? styles.approvedBox : styles.currentSubmission}>
+                  <div className={styles.submissionTitle}><div><strong>Verificación directa de coordinación</strong><span>No necesita adjuntar archivos ni enlaces para este criterio.</span></div><span>CHECK</span></div>
+                  {criterion.score?.observation && <div className={styles.reviewNote}><RotateCcw size={15}/><div><strong>Observación de coordinación</strong><p>{criterion.score.observation}</p></div></div>}
+                </div>}
+
+                {criterion.mode === "evidence" && latest && <div className={styles.currentSubmission}>
                   <div className={styles.submissionTitle}><div><strong>{latest.status === "approved" ? "Evidencia aprobada" : latest.status === "correction_required" ? "Entrega revisada" : editable ? "Entrega enviada · todavía puede editarla" : `Entrega v${latest.version}`}</strong><span>{formatDate(latest.submitted_at)}{latest.reviewed_at ? ` · revisada ${formatDate(latest.reviewed_at)}` : ""}</span></div><span>v{latest.version}</span></div>
                   {latest.review_comment && <div className={styles.reviewNote}><RotateCcw size={15}/><div><strong>Observación de coordinación</strong><p>{latest.review_comment}</p></div></div>}
                   <div className={styles.items}>
@@ -507,7 +523,7 @@ export default function TeacherCriterionEvidenceWorkspace({
                   {editable && <div className={styles.editComment}><input value={comments[criterion.id] ?? latest.teacher_comment ?? ""} onChange={(event) => setComments((current) => ({ ...current, [criterion.id]: event.target.value }))} placeholder="Comentario para coordinación (opcional)"/><button disabled={busy === `comment-${criterion.id}`} onClick={() => void savePendingComment(criterion)}>Guardar comentario</button></div>}
                 </div>}
 
-                {!blocked && (criterion.request?.status === "pending" || criterion.request?.status === "correction_required" || editable) && <div className={styles.uploader}>
+                {criterion.mode === "evidence" && !blocked && (criterion.request?.status === "pending" || criterion.request?.status === "correction_required" || editable) && <div className={styles.uploader}>
                   <div
                     className={`${styles.dropzone} ${canAdd ? "" : styles.dropzoneDisabled}`}
                     tabIndex={canAdd ? 0 : -1}
@@ -535,7 +551,7 @@ export default function TeacherCriterionEvidenceWorkspace({
                   {naOpen === criterion.id ? <div className={styles.naForm}><strong>Solicitar “No aplica”</strong><p>Use esta opción solo cuando el criterio realmente no corresponda a su asignatura o situación.</p><textarea rows={2} value={naJustification[criterion.id] ?? ""} onChange={(event) => setNaJustification((current) => ({ ...current, [criterion.id]: event.target.value }))} placeholder="Explique brevemente por qué no aplica…"/><div><button onClick={() => setNaOpen("")}>Cancelar</button><button className={styles.naSend} disabled={busy === `na-${criterion.id}`} onClick={() => void requestNotApplicable(criterion)}>Enviar solicitud</button></div></div> : <button className={styles.naButton} onClick={() => setNaOpen(criterion.id)}>Este criterio no aplica en mi caso</button>}
                 </div>}
 
-                {criterion.request?.submissions && criterion.request.submissions.length > 1 && <details className={styles.history}><summary>Ver historial de entregas ({criterion.request.submissions.length})</summary><div>{criterion.request.submissions.map((submission) => <article key={submission.id}><strong>Versión {submission.version}</strong><span>{formatDate(submission.submitted_at)} · {submission.status === "approved" ? "Aprobada" : submission.status === "correction_required" ? "Requiere corrección" : submission.status === "superseded" ? "Anterior" : "Enviada"}</span>{submission.review_comment && <p>{submission.review_comment}</p>}</article>)}</div></details>}
+                {criterion.mode === "evidence" && criterion.request?.submissions && criterion.request.submissions.length > 1 && <details className={styles.history}><summary>Ver historial de entregas ({criterion.request.submissions.length})</summary><div>{criterion.request.submissions.map((submission) => <article key={submission.id}><strong>Versión {submission.version}</strong><span>{formatDate(submission.submitted_at)} · {submission.status === "approved" ? "Aprobada" : submission.status === "correction_required" ? "Requiere corrección" : submission.status === "superseded" ? "Anterior" : "Enviada"}</span>{submission.review_comment && <p>{submission.review_comment}</p>}</article>)}</div></details>}
               </div>}
             </article>;
           })}
