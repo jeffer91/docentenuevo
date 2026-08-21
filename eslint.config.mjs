@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
       "app/formal-report-workspace-v2.tsx",
       "app/formal-report-workspace-v3.tsx",
       "app/document-verification.tsx",
+      "app/coordinator-shell.tsx",
+      "app/coordinator-pin-admin.tsx",
       "app/teacher-master-modal.tsx",
       "app/teacher-portal.tsx",
       "app/teacher-process-portal.tsx",
