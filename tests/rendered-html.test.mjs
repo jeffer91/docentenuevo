@@ -18,8 +18,8 @@ async function bundledJavascript() {
   return (await Promise.all(jsFiles.map((name) => readFile(path.join(assets, name), "utf8")))).join("\n");
 }
 
-test("genera los cuatro accesos públicos", async () => {
-  const routes = ["index.html", "docente/index.html", "coordinador/index.html", "administrador/index.html"];
+test("genera los accesos públicos y la verificación documental", async () => {
+  const routes = ["index.html", "docente/index.html", "coordinador/index.html", "administrador/index.html", "verificar/index.html"];
   for (const route of routes) {
     const html = await read(route);
     assert.match(html, /<div id="root"><\/div>/);
@@ -57,6 +57,15 @@ test("el portal docente incluye el desglose y carga de evidencias", async () => 
   assert.match(js, /Ctrl\+V/);
   assert.match(js, /máximo 3 evidencias/i);
   assert.match(js, /Informes formales/);
+});
+
+test("los informes distinguen avance, cumplimiento y verificación", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Avance de evaluación/);
+  assert.match(js, /Cumplimiento evaluado/);
+  assert.match(js, /Sin evaluación/);
+  assert.match(js, /Verificación de documento/);
+  assert.match(js, /Corregido \/ reenviado/);
 });
 
 test("el flujo legado de seis hitos no forma parte de la interfaz publicada", async () => {
