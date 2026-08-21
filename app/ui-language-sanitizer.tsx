@@ -9,6 +9,14 @@ const exactLabels: Record<string, string> = {
   H4: "Durante",
   H5: "Durante",
   H6: "Después",
+  "Sin evidencia": "Pendiente de evidencia",
+  "Pendiente de evidencia": "Pendiente de evidencia",
+  "Por revisar": "En revisión",
+  "Enviado · revisar": "En revisión",
+  "Enviado · pendiente de revisión": "En revisión",
+  "Requiere corrección": "Por corregir",
+  "Corregir": "Por corregir",
+  "No aplica aprobado": "No aplica",
 };
 
 const decoratedReplacements: Array<[RegExp, string]> = [
@@ -50,9 +58,9 @@ function sanitize(root: Node) {
 }
 
 /**
- * Los códigos H1–H6 siguen existiendo como claves técnicas internas, pero no
- * forman parte del lenguaje funcional que ve el usuario. Solo se transforman
- * etiquetas aisladas o decoradas; nombres de archivos como H1.pdf se respetan.
+ * Mantiene una sola terminología visible en SIACD. Los códigos H1–H6 y los
+ * nombres técnicos de estado siguen existiendo internamente para no alterar
+ * la base de datos ni el flujo de evaluación.
  */
 export default function UiLanguageSanitizer() {
   useEffect(() => {
