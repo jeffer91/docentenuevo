@@ -3,7 +3,7 @@
 import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import ExpedientWorkspaceV7 from "./expedient-workspace-v7";
-import FormalReportWorkspace from "./formal-report-workspace";
+import FormalReportWorkspace from "./formal-report-workspace-v2";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
 
 type Props = {
