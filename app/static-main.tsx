@@ -5,8 +5,8 @@ import "./admin-career-manager.css";
 import "./teacher-directory.css";
 import AccessLanding from "./access-landing";
 import AdminShell from "./admin-shell";
+import CoordinatorShell from "./coordinator-shell";
 import DocumentVerification from "./document-verification";
-import SiacdApp from "./siacd-app";
 import TeacherPortal from "./teacher-portal";
 import UiLanguageSanitizer from "./ui-language-sanitizer";
 
@@ -20,7 +20,7 @@ const app = pathname.includes("/verificar")
   : pathname.includes("/administrador")
     ? <AdminShell />
     : pathname.includes("/coordinador")
-      ? <SiacdApp forcedAccess="coordinator" />
+      ? <CoordinatorShell />
       : pathname.includes("/docente")
         ? <TeacherPortal />
         : <AccessLanding />;
