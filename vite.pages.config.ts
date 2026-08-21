@@ -16,6 +16,7 @@ export default defineConfig({
         coordinador: resolve(__dirname, "pages/coordinador/index.html"),
         administrador: resolve(__dirname, "pages/administrador/index.html"),
         docente: resolve(__dirname, "pages/docente/index.html"),
+        verificar: resolve(__dirname, "pages/verificar/index.html"),
       },
     },
   },
