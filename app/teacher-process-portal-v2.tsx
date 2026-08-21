@@ -1,7 +1,7 @@
 "use client";
 
-import { CheckCircle2, History, ListChecks, LogOut, RefreshCw, Target } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, History, LogOut } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import TeacherCriterionEvidenceWorkspace, { type TeacherEvidencePhase } from "./teacher-criterion-evidence-workspace";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import styles from "./teacher-portal.module.css";
@@ -170,16 +170,6 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
   useEffect(() => { void loadSummary(); }, [loadSummary]);
   useEffect(() => { if (selectedExpedientId) void loadDetail(selectedExpedientId, true); }, [loadDetail, selectedExpedientId]);
 
-  const latestReview = useMemo(
-    () => detail?.closed_reviews?.find((review) => review.model_scope !== "historical" && review.percent !== null) ?? null,
-    [detail],
-  );
-
-  const criteriaTotal = useMemo(
-    () => detail ? phaseOrder.reduce((sum, phase) => sum + (detail.phases?.[phase]?.criteria_total ?? 0), 0) : 0,
-    [detail],
-  );
-
   async function logout() {
     const supabase = getSupabaseBrowserClient();
     try {
@@ -199,7 +189,10 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
 
   return <main className={styles.portal}>
     <header className={styles.portalHeader}>
-      <div><span className={styles.eyebrow}>SIACD · Docente</span><h1>{session ? `Bienvenido, ${session.full_name}` : "Acompañamiento docente"}</h1><p>{session?.email ?? ""}</p></div>
+      <div className={styles.teacherIdentity}>
+        <span className={styles.eyebrow}>SIACD · Docente</span>
+        <div className={styles.teacherLine}><h1>{session?.full_name ?? "Acompañamiento docente"}</h1><span className={styles.teacherRole}>Docente</span></div>
+      </div>
       <button className={styles.logout} onClick={() => void logout()}><LogOut size={16}/>Cerrar sesión</button>
     </header>
 
@@ -211,13 +204,6 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
       <section className={styles.processHero}>
         <div><span className={styles.eyebrow}>{detail.expedient.career}</span><h2>{detail.expedient.subject}</h2><p>{detail.expedient.period} · {detail.expedient.modality}</p></div>
         <span className={styles.statusBadge}>{statusLabel(detail.expedient.status)}</span>
-      </section>
-
-      <section className={styles.quickGrid}>
-        <article className={styles.quickCard}><Target size={19}/><span>Etapa actual</span><strong>{phaseLabels[detail.current_phase] ?? "Áreas"}</strong><small>Continúe cargando evidencias desde Mi proceso</small></article>
-        <article className={styles.quickCard}><ListChecks size={19}/><span>Criterios</span><strong>{criteriaTotal || 129}</strong><small>Áreas, Antes, Durante y Después</small></article>
-        <article className={styles.quickCard}><CheckCircle2 size={19}/><span>Último resultado</span><strong>{latestReview?.percent === null || latestReview?.percent === undefined ? "—" : `${latestReview.percent}%`}</strong><small>{latestReview ? `${latestReview.passed} cumplen · ${latestReview.failed} por mejorar` : "Aún no hay revisión vigente"}</small></article>
-        <article className={styles.quickCard}><RefreshCw size={19}/><span>Acciones</span><strong>{detail.pending_actions?.length ?? 0}</strong><small>Observaciones o tareas pendientes</small></article>
       </section>
 
       <nav className={styles.portalTabs}>
@@ -260,7 +246,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
         </section>
       </div>}
 
-      {portalTab === "process" && <section className={styles.section}>
+      {portalTab === "process" && <section className={`${styles.section} ${styles.processSection}`}>
         <TeacherCriterionEvidenceWorkspace token={token} expedientId={selectedExpedientId} initialPhase={selectedPhase} onChanged={() => loadDetail(selectedExpedientId)} />
       </section>}
 
