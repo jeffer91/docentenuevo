@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useState } from "react";
+import CoordinatorPinAdmin from "./coordinator-pin-admin";
 import SiacdApp from "./siacd-app-v6";
 
 const ADMIN_PIN_HASH = "e6955a2c59dc90833986fe0894cf6718dddaa7816bb51bc955cdd3eb4470e554";
@@ -40,7 +41,7 @@ export default function AdminShell() {
     setPin("");
   }
 
-  if (authorized) return <SiacdApp forcedAccess="admin" />;
+  if (authorized) return <><SiacdApp forcedAccess="admin" /><CoordinatorPinAdmin /></>;
 
   return (
     <div className="login-page">
