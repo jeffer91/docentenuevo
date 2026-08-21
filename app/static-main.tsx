@@ -5,6 +5,7 @@ import "./admin-career-manager.css";
 import "./teacher-directory.css";
 import AccessLanding from "./access-landing";
 import AdminShell from "./admin-shell";
+import DocumentVerification from "./document-verification";
 import SiacdApp from "./siacd-app";
 import TeacherPortal from "./teacher-portal";
 import UiLanguageSanitizer from "./ui-language-sanitizer";
@@ -14,13 +15,15 @@ const container = document.getElementById("root");
 if (!container) throw new Error("No se encontró el contenedor principal de SIACD");
 
 const pathname = window.location.pathname.toLowerCase();
-const app = pathname.includes("/administrador")
-  ? <AdminShell />
-  : pathname.includes("/coordinador")
-    ? <SiacdApp forcedAccess="coordinator" />
-    : pathname.includes("/docente")
-      ? <TeacherPortal />
-      : <AccessLanding />;
+const app = pathname.includes("/verificar")
+  ? <DocumentVerification />
+  : pathname.includes("/administrador")
+    ? <AdminShell />
+    : pathname.includes("/coordinador")
+      ? <SiacdApp forcedAccess="coordinator" />
+      : pathname.includes("/docente")
+        ? <TeacherPortal />
+        : <AccessLanding />;
 
 createRoot(container).render(
   <React.StrictMode>
