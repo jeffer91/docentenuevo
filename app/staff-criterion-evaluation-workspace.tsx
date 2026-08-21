@@ -21,6 +21,7 @@ import type { AccessMode, Teacher } from "./siacd-app-v3";
 import styles from "./staff-criterion-evaluation-workspace.module.css";
 
 export type StaffEvaluationPhase = "areas" | "before" | "during" | "after";
+type CriterionMode = "check" | "evidence";
 
 type EvidenceItem = {
   id: string;
@@ -73,6 +74,7 @@ type Criterion = {
   hito_id: string;
   process: string;
   label: string;
+  mode: CriterionMode;
   criticality: string;
   expected_evidence: string | null;
   score: Score | null;
@@ -88,7 +90,7 @@ type WorkspaceData = {
 
 const sectionOrder: Record<StaffEvaluationPhase, string[]> = {
   areas: ["Talento", "Software", "Calidad", "Bienestar Estudiantil"],
-  before: ["Coordinador", "Teams", "Telegram", "PEA", "Adaptaciones", "EVA", "SISACAD"],
+  before: ["Coordinador", "Teams", "PEA", "Adaptaciones", "EVA", "SISACAD"],
   during: ["General", "Adaptaciones", "Presentaciones", "Unidad 1", "Unidad 2", "Unidad 3", "Unidad 4", "Observación de clase"],
   after: ["Cierre"],
 };
@@ -128,7 +130,8 @@ function latestSubmission(criterion: Criterion) {
 function isFreshSubmission(criterion: Criterion) {
   const latest = latestSubmission(criterion);
   return Boolean(
-    latest
+    criterion.mode === "evidence"
+    && latest
     && latest.status === "submitted"
     && !latest.reviewed_at
     && ["submitted", "in_review"].includes(criterion.request?.status ?? ""),
@@ -139,18 +142,22 @@ function criterionState(criterion: Criterion) {
   if (criterion.score?.not_applicable || criterion.na_request?.status === "approved") {
     return { key: "na", label: "No aplica" } as const;
   }
-  if (criterion.request?.status === "approved" || (criterion.score?.score ?? -1) >= 3) {
+  if ((criterion.score?.score ?? -1) >= 3 || (criterion.mode === "evidence" && criterion.request?.status === "approved")) {
     return { key: "approved", label: "Aprobado" } as const;
   }
   if (criterion.na_request?.status === "pending") {
     return { key: "naPending", label: "N/A solicitado" } as const;
   }
-  if (criterion.request?.status === "correction_required" || ((criterion.score?.score ?? 3) < 3 && criterion.score?.evaluated_at)) {
+  if (criterion.score?.evaluated_at && (criterion.score.score ?? 3) < 3) {
+    return { key: "correction", label: criterion.mode === "check" ? "Requiere ajuste" : "Corregir" } as const;
+  }
+  if (criterion.mode === "evidence" && criterion.request?.status === "correction_required") {
     return { key: "correction", label: "Corregir" } as const;
   }
-  if (["submitted", "in_review"].includes(criterion.request?.status ?? "")) {
+  if (criterion.mode === "evidence" && ["submitted", "in_review"].includes(criterion.request?.status ?? "")) {
     return { key: "submitted", label: "Por revisar" } as const;
   }
+  if (criterion.mode === "check") return { key: "pending", label: "Por verificar" } as const;
   return { key: "pending", label: "Sin evidencia" } as const;
 }
 
@@ -207,7 +214,7 @@ export default function StaffCriterionEvaluationWorkspace({
     });
     setLoading(false);
     if (error || !result) {
-      setMessage("No se pudieron cargar las evidencias.");
+      setMessage("No se pudieron cargar los criterios y evidencias.");
       return;
     }
     setData(result as WorkspaceData);
@@ -242,7 +249,7 @@ export default function StaffCriterionEvaluationWorkspace({
       const state = criterionState(criterion);
       if (state.key === "approved" || state.key === "na") approved += 1;
       if (state.key === "correction") corrections += 1;
-      if (state.key === "submitted" || state.key === "naPending") waiting += 1;
+      if (state.key === "submitted" || state.key === "naPending" || (criterion.mode === "check" && state.key === "pending")) waiting += 1;
     }
     return { total: phaseCriteria.length, approved, corrections, waiting };
   }, [phaseCriteria]);
@@ -263,7 +270,7 @@ export default function StaffCriterionEvaluationWorkspace({
   async function toggleCriterion(criterion: Criterion) {
     const next = openCriterion === criterion.id ? "" : criterion.id;
     setOpenCriterion(next);
-    if (!next) return;
+    if (!next || criterion.mode === "check") return;
     const latest = latestSubmission(criterion);
     const images = latest?.items.filter((item) => item.kind === "image") ?? [];
     await Promise.all(images.map((item) => signedItemUrl(item)));
@@ -279,7 +286,10 @@ export default function StaffCriterionEvaluationWorkspace({
   }
 
   async function evaluate(criterion: Criterion) {
-    if (!staffId || !isFreshSubmission(criterion)) return;
+    if (!staffId) return;
+    if (criterion.mode === "evidence" && !isFreshSubmission(criterion)) return;
+    if (criterion.score?.not_applicable || criterion.na_request?.status === "approved" || criterion.na_request?.status === "pending") return;
+
     const scoreText = scoreDrafts[criterion.id] ?? "";
     const score = Number(scoreText);
     const observation = (observations[criterion.id] ?? "").trim();
@@ -288,9 +298,10 @@ export default function StaffCriterionEvaluationWorkspace({
       return;
     }
     if (score < 3 && !observation) {
-      setMessage("Escriba qué debe corregir el docente.");
+      setMessage(criterion.mode === "check" ? "Escriba qué debe ajustar el docente." : "Escriba qué debe corregir el docente.");
       return;
     }
+
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
     setBusy(`score-${criterion.id}`);
@@ -312,9 +323,10 @@ export default function StaffCriterionEvaluationWorkspace({
       );
       return;
     }
+
     setScoreDrafts((current) => ({ ...current, [criterion.id]: "" }));
     setObservations((current) => ({ ...current, [criterion.id]: "" }));
-    setMessage(score >= 3 ? "Criterio aprobado." : "Corrección solicitada.");
+    setMessage(score >= 3 ? "Criterio aprobado." : criterion.mode === "check" ? "Ajuste registrado." : "Corrección solicitada.");
     await load();
     await onChanged?.();
   }
@@ -347,13 +359,11 @@ export default function StaffCriterionEvaluationWorkspace({
     await onChanged?.();
   }
 
-  if (loading) {
-    return <div className={styles.loading}><Loader2 size={18}/><span>Cargando…</span></div>;
-  }
+  if (loading) return <div className={styles.loading}><Loader2 size={18}/><span>Cargando…</span></div>;
 
   return <div className={styles.root}>
     <section className={styles.topline}>
-      <div><h3>{phaseLabels[phase]}</h3><p>Revise y califique las evidencias.</p></div>
+      <div><h3>{phaseLabels[phase]}</h3><p>Verifique directamente los criterios CHECK y revise archivos o enlaces únicamente en los criterios EVIDENCIA.</p></div>
       <button onClick={() => void load()}><RefreshCw size={15}/>Actualizar</button>
     </section>
 
@@ -372,11 +382,24 @@ export default function StaffCriterionEvaluationWorkspace({
           const state = criterionState(criterion);
           const latest = latestSubmission(criterion);
           const expanded = openCriterion === criterion.id;
-          const gradeable = isFreshSubmission(criterion);
-          const currentScore = criterion.score?.not_applicable ? "N/A" : criterion.score?.score === null || criterion.score?.score === undefined ? "—" : `${criterion.score.score}/4`;
+          const gradeable = criterion.mode === "check"
+            ? state.key !== "na" && state.key !== "naPending"
+            : isFreshSubmission(criterion);
+          const currentScore = criterion.score?.not_applicable
+            ? "N/A"
+            : criterion.score?.score === null || criterion.score?.score === undefined
+              ? "—"
+              : `${criterion.score.score}/4`;
+
           return <article className={`${styles.criterion} ${styles[state.key] ?? ""}`} key={criterion.id}>
             <button className={styles.criterionHead} onClick={() => void toggleCriterion(criterion)}>
-              <div className={styles.identity}><span className={styles.code}>{criterion.id}</span><div><strong>{criterion.label}</strong><small>{criterion.expected_evidence ? `Evidencia: ${criterion.expected_evidence}` : "Evidencia requerida"}</small></div></div>
+              <div className={styles.identity}>
+                <span className={styles.code}>{criterion.id}</span>
+                <div>
+                  <strong>{criterion.label}</strong>
+                  <small>{criterion.mode === "check" ? "CHECK · verificación directa de coordinación" : criterion.expected_evidence ? `EVIDENCIA · ${criterion.expected_evidence}` : "EVIDENCIA · archivo, captura o enlace requerido"}</small>
+                </div>
+              </div>
               <div className={styles.headState}><span>{state.label}</span><b>{currentScore}</b></div>
             </button>
 
@@ -392,7 +415,10 @@ export default function StaffCriterionEvaluationWorkspace({
 
               {state.key === "na" && <div className={styles.approvedNotice}><CheckCircle2 size={17}/><div><strong>No aplica</strong><p>{criterion.na_request?.review_comment || criterion.score?.observation || "Aprobado por coordinación."}</p></div></div>}
 
-              {latest ? <section className={styles.submission}>
+              {criterion.mode === "check" ? <div className={styles.noEvidence}>
+                <CheckCircle2 size={17}/>
+                <div><strong>Verificación directa</strong><p>Este criterio no requiere que el docente cargue archivos. Revíselo en el sistema, aula, sesión o fuente institucional correspondiente.</p>{criterion.score?.observation && <p><b>Última observación:</b> {criterion.score.observation}</p>}</div>
+              </div> : latest ? <section className={styles.submission}>
                 <header><div><strong>Entrega · v{latest.version}</strong><span>{formatDate(latest.submitted_at)}{latest.reviewed_at ? ` · revisada ${formatDate(latest.reviewed_at)}` : ""}</span></div><span className={styles.submissionState}>{latest.status === "approved" ? "Aprobada" : latest.status === "correction_required" ? "Corrección" : latest.status === "superseded" ? "Histórica" : "Por revisar"}</span></header>
                 {latest.teacher_comment && <div className={styles.teacherComment}><strong>Comentario</strong><p>{latest.teacher_comment}</p></div>}
                 <div className={styles.items}>
@@ -403,20 +429,20 @@ export default function StaffCriterionEvaluationWorkspace({
                   </article>)}
                 </div>
                 {latest.review_comment && <div className={styles.previousReview}><RotateCcw size={15}/><div><strong>Observación</strong><p>{latest.review_comment}</p></div></div>}
-              </section> : <div className={styles.noEvidence}><Clock3 size={17}/><div><strong>Sin evidencia</strong></div></div>}
+              </section> : <div className={styles.noEvidence}><Clock3 size={17}/><div><strong>Sin evidencia</strong><p>El docente todavía no ha enviado la evidencia requerida.</p></div></div>}
 
               {gradeable && <section className={styles.evaluation}>
-                <div className={styles.evaluationTitle}><div><strong>Calificar evidencia</strong></div><small>3–4 aprueba · 0–2 corrige</small></div>
+                <div className={styles.evaluationTitle}><div><strong>{criterion.mode === "check" ? "Calificar criterio" : "Calificar evidencia"}</strong></div><small>3–4 aprueba · 0–2 requiere ajuste</small></div>
                 <div className={styles.scoreButtons}>
                   {[0, 1, 2, 3, 4].map((score) => <button key={score} className={(scoreDrafts[criterion.id] ?? "") === String(score) ? styles.scoreSelected : ""} onClick={() => setScoreDrafts((current) => ({ ...current, [criterion.id]: String(score) }))}><b>{score}</b><span>{score === 4 ? "Integral" : score === 3 ? "Cumple" : score === 2 ? "Acompañamiento" : score === 1 ? "Incipiente" : "No cumple"}</span></button>)}
                 </div>
-                <label>Observación<textarea rows={3} value={observations[criterion.id] ?? ""} onChange={(event) => setObservations((current) => ({ ...current, [criterion.id]: event.target.value }))} placeholder={(Number(scoreDrafts[criterion.id]) < 3 && scoreDrafts[criterion.id]) ? "Qué debe corregir…" : "Opcional si aprueba…"}/></label>
-                <div className={styles.saveLine}><span>{scoreDrafts[criterion.id] && Number(scoreDrafts[criterion.id]) < 3 ? "Se solicitará corrección." : ""}</span><button disabled={busy === `score-${criterion.id}`} onClick={() => void evaluate(criterion)}>{busy === `score-${criterion.id}` ? <Loader2 size={15}/> : <Save size={15}/>}Guardar</button></div>
+                <label>Observación<textarea rows={3} value={observations[criterion.id] ?? ""} onChange={(event) => setObservations((current) => ({ ...current, [criterion.id]: event.target.value }))} placeholder={(Number(scoreDrafts[criterion.id]) < 3 && scoreDrafts[criterion.id]) ? "Qué debe ajustar…" : "Opcional si aprueba…"}/></label>
+                <div className={styles.saveLine}><span>{scoreDrafts[criterion.id] && Number(scoreDrafts[criterion.id]) < 3 ? (criterion.mode === "check" ? "Se registrará como requiere ajuste." : "Se solicitará corrección.") : ""}</span><button disabled={busy === `score-${criterion.id}`} onClick={() => void evaluate(criterion)}>{busy === `score-${criterion.id}` ? <Loader2 size={15}/> : <Save size={15}/>}Guardar</button></div>
               </section>}
 
-              {!gradeable && state.key === "correction" && <div className={styles.waitingCorrection}><RotateCcw size={17}/><div><strong>Esperando corrección</strong><p>La nueva entrega aparecerá aquí.</p></div></div>}
+              {criterion.mode === "evidence" && !gradeable && state.key === "correction" && <div className={styles.waitingCorrection}><RotateCcw size={17}/><div><strong>Esperando corrección</strong><p>La nueva entrega aparecerá aquí.</p></div></div>}
 
-              {criterion.request?.submissions && criterion.request.submissions.length > 1 && <details className={styles.history}><summary>Historial ({criterion.request.submissions.length})</summary><div>{criterion.request.submissions.map((submission) => <article key={submission.id}><strong>Versión {submission.version}</strong><span>{formatDate(submission.submitted_at)} · {submission.status === "approved" ? "Aprobada" : submission.status === "correction_required" ? "Corrección" : submission.status === "superseded" ? "Anterior" : "Enviada"}</span>{submission.review_comment && <p>{submission.review_comment}</p>}</article>)}</div></details>}
+              {criterion.mode === "evidence" && criterion.request?.submissions && criterion.request.submissions.length > 1 && <details className={styles.history}><summary>Historial ({criterion.request.submissions.length})</summary><div>{criterion.request.submissions.map((submission) => <article key={submission.id}><strong>Versión {submission.version}</strong><span>{formatDate(submission.submitted_at)} · {submission.status === "approved" ? "Aprobada" : submission.status === "correction_required" ? "Corrección" : submission.status === "superseded" ? "Anterior" : "Enviada"}</span>{submission.review_comment && <p>{submission.review_comment}</p>}</article>)}</div></details>}
             </div>}
           </article>;
         })}
