@@ -139,7 +139,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
     }
     setSession(sessionRow);
     if (summaryResult.error) {
-      setMessage("No se pudo cargar su proceso de acompañamiento.");
+      setMessage("No se pudo cargar su proceso.");
       setLoading(false);
       return;
     }
@@ -158,7 +158,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
     });
     if (error || !data) {
       setDetail(null);
-      setMessage("No se pudo cargar el detalle del proceso.");
+      setMessage("No se pudo cargar el proceso.");
       return;
     }
     const loaded = data as PortalDetail;
@@ -185,7 +185,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
     setPortalTab("process");
   }
 
-  if (loading && !session) return <div className={styles.center}><div className={styles.loading}>Cargando su acompañamiento…</div></div>;
+  if (loading && !session) return <div className={styles.center}><div className={styles.loading}>Cargando…</div></div>;
 
   return <main className={styles.portal}>
     <header className={styles.portalHeader}>
@@ -193,14 +193,14 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
         <span className={styles.eyebrow}>SIACD · Docente</span>
         <div className={styles.teacherLine}><h1>{session?.full_name ?? "Acompañamiento docente"}</h1><span className={styles.teacherRole}>Docente</span></div>
       </div>
-      <button className={styles.logout} onClick={() => void logout()}><LogOut size={16}/>Cerrar sesión</button>
+      <button className={styles.logout} onClick={() => void logout()}><LogOut size={16}/>Salir</button>
     </header>
 
-    {message && <section className={styles.infoBanner}><CheckCircle2 size={20}/><div><strong>Información</strong><span>{message}</span></div></section>}
+    {message && <section className={styles.infoBanner}><CheckCircle2 size={18}/><div><span>{message}</span></div></section>}
 
     {expedients.length > 1 && <section className={styles.processSelector}><span>Proceso</span><select value={selectedExpedientId} onChange={(event) => setSelectedExpedientId(event.target.value)}>{expedients.map((item) => <option key={item.expedient_id} value={item.expedient_id}>{item.career} · {item.subject} · {item.period}</option>)}</select></section>}
 
-    {!expedients.length ? <section className={styles.section}><div className={styles.empty}>No existen procesos vinculados a este docente todavía.</div></section> : detail && <>
+    {!expedients.length ? <section className={styles.section}><div className={styles.empty}>No hay procesos vinculados.</div></section> : detail && <>
       <section className={styles.processHero}>
         <div><span className={styles.eyebrow}>{detail.expedient.career}</span><h2>{detail.expedient.subject}</h2><p>{detail.expedient.period} · {detail.expedient.modality}</p></div>
         <span className={styles.statusBadge}>{statusLabel(detail.expedient.status)}</span>
@@ -215,8 +215,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
 
       {portalTab === "home" && <div className={styles.dashboardGrid}>
         <section className={`${styles.section} ${styles.wideSection}`}>
-          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Mi avance</span><h2>Suba evidencias directamente en cada criterio</h2></div><button className={styles.logout} onClick={() => openPhase(detail.current_phase)}>Continuar ahora</button></div>
-          <p className={styles.helperText}>No necesita esperar una solicitud de coordinación. Entre a una etapa, abra el criterio y pegue su captura con Ctrl+V, arrastre un archivo, selecciónelo o agregue un enlace.</p>
+          <div className={styles.sectionHead}><div><h2>Mi proceso</h2></div><button className={styles.logout} onClick={() => openPhase(detail.current_phase)}>Continuar</button></div>
           <div className={styles.phaseGrid}>
             {phaseOrder.map((phase) => {
               const item = detail.phases?.[phase];
@@ -224,25 +223,10 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
               return <button key={phase} className={`${styles.phaseCard} ${phase === detail.current_phase ? styles.currentPhase : ""}`} style={{ textAlign: "left", cursor: "pointer", font: "inherit" }} onClick={() => openPhase(phase)}>
                 <header><div><span>{phaseLabels[phase]}</span><strong>{item.status}</strong></div><b>{item.progress}%</b></header>
                 <div className={styles.progress}><span style={{ width: `${item.progress}%` }}/></div>
-                <footer><span>{item.criteria_evaluated}/{item.criteria_total} criterios revisados</span><span>Abrir criterios</span></footer>
+                <footer><span>{item.criteria_evaluated}/{item.criteria_total} revisados</span><span>Abrir</span></footer>
               </button>;
             })}
           </div>
-        </section>
-
-        <section className={styles.section}>
-          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Forma rápida</span><h2>Cómo enviar una evidencia</h2></div></div>
-          <div className={styles.taskList}>
-            <article className={styles.taskItem}><div className={styles.taskIcon}><span>1</span></div><div><strong>Abra el criterio</strong><span>Áreas, Antes, Durante o Después.</span></div></article>
-            <article className={styles.taskItem}><div className={styles.taskIcon}><span>2</span></div><div><strong>Pegue la captura con Ctrl+V</strong><span>También puede arrastrar, seleccionar o agregar un enlace.</span></div></article>
-            <article className={styles.taskItem}><div className={styles.taskIcon}><span>3</span></div><div><strong>Pulse Enviar</strong><span>Quedará “Enviado · pendiente de revisión”.</span></div></article>
-          </div>
-        </section>
-
-        <section className={styles.section}>
-          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Importante</span><h2>Puede corregir antes de la revisión</h2></div></div>
-          <p className={styles.helperText}>Mientras coordinación no haya revisado su entrega, puede eliminar una evidencia, agregar otra hasta completar 3 y actualizar su comentario.</p>
-          <button className={styles.logout} onClick={() => openPhase(detail.current_phase)}>Ir a Mi proceso</button>
         </section>
       </div>}
 
@@ -251,13 +235,13 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
       </section>}
 
       {portalTab === "reviews" && <section className={styles.section}>
-        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Resultados publicados</span><h2>Mis revisiones</h2></div><span>{detail.closed_reviews?.length ?? 0}</span></div>
-        {detail.closed_reviews?.length ? <div className={styles.reviewList}>{detail.closed_reviews.map((review) => <article className={styles.reviewCard} key={review.id}><header><div><span>{review.model_scope === "historical" ? "Histórico" : `Revisión ${review.sequence}`}</span><h3>{review.title}</h3><small>{formatDate(review.closed_at)}</small></div><strong>{review.percent === null ? "—" : `${review.percent}%`}</strong></header><div className={styles.reviewStats}><span><b>{review.evaluated}</b>Evaluados</span><span><b>{review.passed}</b>Cumplen</span><span><b>{review.failed}</b>Por mejorar</span><span><b>{review.not_applicable}</b>No aplica</span></div>{review.failed_items?.length > 0 && <div className={styles.reviewIssues}><strong>Aspectos por mejorar</strong>{review.failed_items.slice(0, 8).map((item) => <div key={`${review.id}-${item.criterion_id}`}><span>{item.criterion_id} · {item.score}/4</span><p>{item.observation || "Revise la observación con coordinación."}</p></div>)}</div>}</article>)}</div> : <div className={styles.empty}>Todavía no hay revisiones publicadas.</div>}
+        <div className={styles.sectionHead}><div><h2>Revisiones</h2></div><span>{detail.closed_reviews?.length ?? 0}</span></div>
+        {detail.closed_reviews?.length ? <div className={styles.reviewList}>{detail.closed_reviews.map((review) => <article className={styles.reviewCard} key={review.id}><header><div><span>{review.model_scope === "historical" ? "Histórico" : `Revisión ${review.sequence}`}</span><h3>{review.title}</h3><small>{formatDate(review.closed_at)}</small></div><strong>{review.percent === null ? "—" : `${review.percent}%`}</strong></header><div className={styles.reviewStats}><span><b>{review.evaluated}</b>Evaluados</span><span><b>{review.passed}</b>Cumplen</span><span><b>{review.failed}</b>Por mejorar</span><span><b>{review.not_applicable}</b>No aplica</span></div>{review.failed_items?.length > 0 && <div className={styles.reviewIssues}><strong>Por mejorar</strong>{review.failed_items.slice(0, 8).map((item) => <div key={`${review.id}-${item.criterion_id}`}><span>{item.criterion_id} · {item.score}/4</span><p>{item.observation || "Revise la observación."}</p></div>)}</div>}</article>)}</div> : <div className={styles.empty}>Sin revisiones todavía.</div>}
       </section>}
 
       {portalTab === "history" && <section className={styles.section}>
-        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Trazabilidad</span><h2>Historial de mi proceso</h2></div><span>{detail.activity?.length ?? 0}</span></div>
-        {detail.activity?.length ? <div className={styles.activityList}>{detail.activity.map((item) => <article className={styles.activityItem} key={item.id}><div className={styles.activityIcon}><History size={15}/></div><div><strong>{item.message}</strong><span>{actorLabel(item.actor_type)} · {formatDate(item.created_at)}</span></div></article>)}</div> : <div className={styles.empty}>Todavía no existen movimientos registrados.</div>}
+        <div className={styles.sectionHead}><div><h2>Historial</h2></div><span>{detail.activity?.length ?? 0}</span></div>
+        {detail.activity?.length ? <div className={styles.activityList}>{detail.activity.map((item) => <article className={styles.activityItem} key={item.id}><div className={styles.activityIcon}><History size={15}/></div><div><strong>{item.message}</strong><span>{actorLabel(item.actor_type)} · {formatDate(item.created_at)}</span></div></article>)}</div> : <div className={styles.empty}>Sin movimientos todavía.</div>}
       </section>}
     </>}
   </main>;
