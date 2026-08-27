@@ -77,6 +77,7 @@ test("el flujo legado de seis hitos no forma parte de la interfaz publicada", as
 
 test("el acceso de coordinadores permite crear PIN en el primer ingreso", async () => {
   const js = await bundledJavascript();
+  assert.match(js, /Seleccione su nombre/);
   assert.match(js, /Primer ingreso/);
   assert.match(js, /Crear PIN e ingresar/);
   assert.match(js, /Confirmar PIN/);
