@@ -464,6 +464,66 @@ function evolutionChart(cycles: ReviewCycle[]) {
   return canvas.toDataURL("image/png");
 }
 
+function demoEvidenceImage(index: number, title: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 675;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  ctx.fillStyle = "#f4f7fa";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#cfd9e3";
+  ctx.lineWidth = 3;
+  ctx.fillRect(35, 30, 1130, 610);
+  ctx.strokeRect(35, 30, 1130, 610);
+
+  ctx.fillStyle = "#173f63";
+  ctx.fillRect(35, 30, 1130, 78);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 30px Arial";
+  ctx.fillText(`EVIDENCIA DEMO 0${index}`, 75, 78);
+
+  ctx.fillStyle = "#243b50";
+  ctx.font = "bold 27px Arial";
+  ctx.fillText(title, 75, 155);
+  ctx.fillStyle = "#66798a";
+  ctx.font = "19px Arial";
+  ctx.fillText("Imagen completamente ficticia para validar el diseño y la trazabilidad del informe.", 75, 190);
+
+  ctx.fillStyle = index === 1 ? "#eaf2f8" : index === 2 ? "#eef6f0" : "#f7f3eb";
+  ctx.fillRect(78, 230, 720, 285);
+  ctx.fillStyle = "#d5e2ec";
+  ctx.fillRect(835, 230, 260, 285);
+
+  ctx.fillStyle = "#173f63";
+  ctx.font = "bold 22px Arial";
+  ctx.fillText(index === 1 ? "Sesión institucional registrada" : index === 2 ? "Aula virtual y PEA verificados" : "Seguimiento académico completado", 115, 285);
+
+  ctx.fillStyle = "#526a7c";
+  ctx.font = "20px Arial";
+  const rows = index === 1
+    ? ["Teams configurado", "Inducción realizada", "Asistencia validada"]
+    : index === 2
+      ? ["Recursos cargados", "Unidades configuradas", "Evaluaciones habilitadas"]
+      : ["129 criterios revisados", "100 % de avance", "Proceso aprobado"];
+  rows.forEach((item, row) => {
+    ctx.fillText(`✓ ${item}`, 125, 345 + row * 55);
+  });
+
+  ctx.fillStyle = "#2f6c4d";
+  ctx.fillRect(875, 420, 180, 55);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 19px Arial";
+  ctx.fillText("COMPLETADO", 897, 454);
+
+  ctx.fillStyle = "#8b99a6";
+  ctx.font = "17px Arial";
+  ctx.fillText("SIACD · Datos ficticios · No representa una evidencia real", 75, 600);
+  return canvas.toDataURL("image/png");
+}
+
 async function remoteImageDataUrl(url: string) {
   try {
     const response = await fetch(url);
@@ -505,7 +565,10 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       if (!staffId) throw new Error("No se pudo identificar al responsable.");
       const { data, error } = await supabase.rpc("staff_prepare_demo_report_fixture", { p_expedient_id: teacher.id, p_staff_id: staffId, p_mode: mode });
       if (error) throw new Error(error.message);
-      setMessage((data as { message?: string } | null)?.message || "Escenario DEMO preparado.");
+      const { error: imageError } = await supabase.rpc("staff_apply_demo_images", { p_expedient_id: teacher.id, p_staff_id: staffId });
+      if (imageError) throw new Error(imageError.message);
+      const baseMessage = (data as { message?: string } | null)?.message || "Escenario DEMO preparado.";
+      setMessage(`${baseMessage} Evidencias visuales ficticias cargadas para revisar la presentación.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo preparar el escenario DEMO.");
     } finally {
@@ -1150,6 +1213,22 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       drawExecutive(rows, definition.phase ? `la etapa ${phaseLabels[definition.phase]}` : "el acompañamiento consolidado");
       if (definition.key === "informe_consolidado") drawHistory();
       drawDetails(rows, definition.key === "informe_consolidado");
+      if (isDemo) {
+        newPage();
+        section("Anexo de evidencias demostrativas", "Imágenes ficticias incorporadas exclusivamente para validar la presentación del documento.");
+        [
+          ["Inducción institucional", "Sesión de inducción y participación"],
+          ["Aula virtual y PEA", "Configuración académica y recursos"],
+          ["Seguimiento académico", "Avance y cumplimiento del acompañamiento"],
+        ].forEach(([title, figureTitle], index) => {
+          apaFigure(
+            figureTitle,
+            demoEvidenceImage(index + 1, title),
+            68,
+            "Imagen ficticia generada por SIACD para pruebas de maquetación documental. No corresponde a una evidencia real ni contiene datos personales reales.",
+          );
+        });
+      }
       await drawClosure();
 
       const pages = pdf.getNumberOfPages();
