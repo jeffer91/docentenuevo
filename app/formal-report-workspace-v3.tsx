@@ -556,6 +556,8 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const version = (documentsResult.data ?? []).filter((item) => item.document_type === definition.key && item.status !== "void").length + 1;
       const code = `SIACD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(code)}`;
+      const institutionalLogo = await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
+      const generalCoordinatorName = ((staffResult.data ?? []) as StaffRow[]).find((item) => item.role === "approver")?.full_name ?? "";
 
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
@@ -567,17 +569,74 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       let figureNumber = 0;
       let tableNumber = 0;
 
-      const pageHeader = () => {
-        pdf.setFillColor(13, 41, 70);
-        pdf.rect(0, 0, pageWidth, 20, "F");
-        pdf.setTextColor(255, 255, 255);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(11);
-        pdf.text("ITSQMET · SIACD", margin, 9);
+      const pageHeader = (pageNumber?: number, totalPages?: number) => {
+        const top = 10;
+        const height = 30;
+        const leftWidth = 46;
+        const centerWidth = 94;
+        const rightWidth = contentWidth - leftWidth - centerWidth;
+        const leftX = margin;
+        const centerX = leftX + leftWidth;
+        const rightX = centerX + centerWidth;
+
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(margin - 1, top - 1, contentWidth + 2, height + 2, "F");
+        pdf.setDrawColor(74, 92, 108);
+        pdf.setLineWidth(0.25);
+        pdf.rect(leftX, top, leftWidth, height);
+        pdf.rect(centerX, top, centerWidth, height);
+        pdf.rect(rightX, top, rightWidth, height);
+
+        if (institutionalLogo) {
+          pdf.addImage(institutionalLogo, "PNG", leftX + 4, top + 3, leftWidth - 8, 13);
+        } else {
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(9);
+          pdf.setTextColor(13, 41, 70);
+          pdf.text("ITSQMET", leftX + leftWidth / 2, top + 10, { align: "center" });
+        }
+
         pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(7.3);
-        pdf.text("Sistema Integral de Acompañamiento Docente", margin, 14);
-        y = 30;
+        pdf.setFontSize(6.6);
+        pdf.setTextColor(45, 58, 70);
+        pdf.text("Fecha de Elaboración:", leftX + 3, top + 22);
+        pdf.setFont("helvetica", "bold");
+        pdf.text(formatDate(ecuadorToday()), leftX + 3, top + 26);
+
+        pdf.line(centerX, top + 8, centerX + centerWidth, top + 8);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(8.2);
+        pdf.setTextColor(13, 41, 70);
+        pdf.text("COORDINACIÓN GENERAL DE CARRERAS", centerX + centerWidth / 2, top + 5.4, { align: "center" });
+        const headerTitle = pdf.splitTextToSize(definition.title, centerWidth - 6);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+        pdf.setTextColor(25, 38, 50);
+        pdf.text(headerTitle, centerX + centerWidth / 2, top + 14, { align: "center" });
+
+        pdf.line(rightX, top + 10, rightX + rightWidth, top + 10);
+        pdf.line(rightX, top + 20, rightX + rightWidth, top + 20);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(6.2);
+        pdf.setTextColor(45, 58, 70);
+        pdf.text("CÓDIGO", rightX + 2, top + 3.7);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(6.3);
+        const codeLines = pdf.splitTextToSize(code, rightWidth - 4);
+        pdf.text(codeLines.slice(0, 2), rightX + 2, top + 7);
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(6.3);
+        pdf.text("Versión:", rightX + 2, top + 14);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(version === 1 ? "1.0" : String(version), rightX + 16, top + 14);
+
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Página:", rightX + 2, top + 24);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(pageNumber && totalPages ? `${pageNumber} de ${totalPages}` : "—", rightX + 16, top + 24);
+
+        y = 47;
       };
       const newPage = () => { pdf.addPage(); pageHeader(); };
       const ensure = (height = 16) => { if (y + height > pageHeight - 18) newPage(); };
@@ -695,40 +754,74 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
 
       const drawHeader = () => {
         pageHeader();
+
         pdf.setTextColor(13, 41, 70);
-        pdf.setFont("times", "bold");
-        pdf.setFontSize(17);
-        pdf.text(definition.title, margin, y);
-        y += 7;
-        pdf.setFont("times", "normal");
-        pdf.setFontSize(9.2);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(23);
+        const coverTitle = pdf.splitTextToSize(definition.title, 160);
+        const titleTop = 105 - Math.max(0, coverTitle.length - 1) * 5;
+        pdf.text(coverTitle, pageWidth / 2, titleTop, { align: "center" });
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
         pdf.setTextColor(82, 98, 113);
-        pdf.text(pdf.splitTextToSize(definition.subtitle, 132), margin, y);
+        const coverSubtitle = pdf.splitTextToSize(definition.subtitle, 145);
+        pdf.text(coverSubtitle, pageWidth / 2, titleTop + coverTitle.length * 9 + 5, { align: "center" });
+
         pdf.setFillColor(official ? 229 : 255, official ? 246 : 243, official ? 235 : 215);
         pdf.setTextColor(official ? 34 : 141, official ? 104 : 88, official ? 64 : 18);
-        pdf.roundedRect(162, 25, 33, 10, 2, 2, "F");
-        pdf.setFont("times", "bold");
-        pdf.setFontSize(7.5);
-        pdf.text(official ? "OFICIAL" : "BORRADOR", 178.5, 31.4, { align: "center" });
-        y += 14;
-        pdf.setDrawColor(218, 226, 232);
-        pdf.roundedRect(margin, y, contentWidth, 36, 2, 2, "S");
+        pdf.roundedRect(82, 146, 46, 10, 2, 2, "F");
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(8);
+        pdf.text(official ? "DOCUMENTO OFICIAL" : "BORRADOR", pageWidth / 2, 152.5, { align: "center" });
+
+        const signatureTop = 232;
+        const signatureHeight = 43;
+        const signatureWidth = contentWidth / 3;
+        const signatureRoles = [
+          { role: "Docente", name: teacher.name },
+          { role: "Coordinador(a) de Carrera", name: coordinatorName || "—" },
+          { role: "Coordinador(a) General de Carreras", name: generalCoordinatorName || "—" },
+        ];
+
+        pdf.setDrawColor(110, 122, 133);
+        pdf.setLineWidth(0.25);
+        signatureRoles.forEach((item, index) => {
+          const x = margin + index * signatureWidth;
+          pdf.rect(x, signatureTop, signatureWidth, signatureHeight);
+          pdf.line(x + 8, signatureTop + 21, x + signatureWidth - 8, signatureTop + 21);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
+          pdf.setTextColor(28, 42, 55);
+          const nameLines = pdf.splitTextToSize(item.name, signatureWidth - 8);
+          pdf.text(nameLines, x + signatureWidth / 2, signatureTop + 27, { align: "center" });
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(8.5);
+          const roleLines = pdf.splitTextToSize(item.role, signatureWidth - 6);
+          pdf.text(roleLines, x + signatureWidth / 2, signatureTop + 36, { align: "center" });
+        });
+
+        newPage();
+        section("Datos del documento");
         const meta = (label: string, value: string, x: number, top: number, width: number) => {
           pdf.setTextColor(101, 115, 128);
-          pdf.setFont("times", "bold");
-          pdf.setFontSize(6.5);
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(7);
           pdf.text(label.toUpperCase(), x, top);
           pdf.setTextColor(28, 42, 55);
-          pdf.setFont("times", "normal");
-          pdf.setFontSize(8.3);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
           pdf.text(pdf.splitTextToSize(value || "—", width), x, top + 5);
         };
-        meta("Docente", teacher.name, 20, y + 7, 73);
-        meta("Carrera", teacher.career, 102, y + 7, 87);
-        meta("Asignatura", teacher.subject, 20, y + 22, 73);
-        meta("Período / modalidad", `${teacher.period} · ${teacher.modality}`, 102, y + 22, 87);
-        y += 43;
-        line("Presentación elaborada con criterios de organización de tablas, figuras y notas compatibles con APA 7, conservando la identidad institucional de SIACD.", 8.3, false, [95, 107, 119], 0, true);
+        const metaTop = y;
+        pdf.setDrawColor(218, 226, 232);
+        pdf.roundedRect(margin, metaTop - 4, contentWidth, 36, 2, 2, "S");
+        meta("Docente", teacher.name, 20, metaTop + 3, 73);
+        meta("Carrera", teacher.career, 102, metaTop + 3, 87);
+        meta("Asignatura", teacher.subject, 20, metaTop + 18, 73);
+        meta("Período / modalidad", `${teacher.period} · ${teacher.modality}`, 102, metaTop + 18, 87);
+        y = metaTop + 40;
+        line("Documento generado por SIACD con portada institucional, encabezado repetible y estructura de contenido formal.", 8.3, false, [95, 107, 119], 0, true);
       };
 
       const drawStatsTable = (reportRows: CriterionRow[]) => {
@@ -1028,13 +1121,13 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const pages = pdf.getNumberOfPages();
       for (let page = 1; page <= pages; page += 1) {
         pdf.setPage(page);
-        pdf.setDrawColor(225, 230, 235);
-        pdf.line(margin, 285, 194, 285);
-        pdf.setFont("times", "normal");
-        pdf.setFontSize(7.2);
-        pdf.setTextColor(105, 116, 127);
-        pdf.text(`${definition.title} · ${teacher.name}`, margin, 290);
-        pdf.text(`Página ${page} de ${pages}`, 194, 290, { align: "right" });
+        pageHeader(page, pages);
+        if (page > 1) {
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8);
+          pdf.setTextColor(92, 103, 114);
+          pdf.text(String(page), pageWidth / 2, 291, { align: "center" });
+        }
       }
 
       const blob = pdf.output("blob");
