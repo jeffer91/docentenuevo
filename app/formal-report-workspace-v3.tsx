@@ -1161,7 +1161,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
   return <div style={{ position: "fixed", inset: 0, background: "rgba(8,22,38,.58)", zIndex: 10020, display: "grid", placeItems: "center", padding: 18 }}>
     <section style={{ width: "min(940px,96vw)", maxHeight: "92vh", overflow: "auto", background: "white", borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,.24)" }}>
       <header style={{ padding: "20px 22px", background: "#0d2946", color: "white", display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start" }}>
-        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes SIACD</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>Formato APA 7, análisis estadístico, figuras, conclusiones y trazabilidad.</p></div>
+        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes de acompañamiento</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>Portada institucional, encabezado repetible, análisis, conclusiones y trazabilidad.</p></div>
         <button onClick={onClose} aria-label="Cerrar" style={{ border: 0, background: "rgba(255,255,255,.12)", color: "white", borderRadius: 10, padding: 8, cursor: "pointer" }}><X size={18}/></button>
       </header>
       <div style={{ padding: 22 }}>
