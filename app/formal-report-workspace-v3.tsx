@@ -720,7 +720,8 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.setFontSize(6.5);
         pdf.text(label.toUpperCase(), x + 4, top + height - 4);
       };
-      const callout = (title: string, lines: string[], _tone: "blue" | "amber") => {
+      const callout = (title: string, lines: string[], tone: "blue" | "amber") => {
+        void tone;
         ensure(18);
         pdf.setFont(bodyFont, "bold");
         pdf.setFontSize(12);
