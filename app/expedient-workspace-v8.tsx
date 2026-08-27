@@ -65,7 +65,7 @@ export default function ExpedientWorkspaceV8(props: Props) {
         cursor: "pointer",
       }}
     >
-      <FileText size={17}/> Informes formales
+      <FileText size={17}/> Informes de acompañamiento
     </button>
     {showReports && <FormalReportWorkspace
       teacher={props.teacher}
