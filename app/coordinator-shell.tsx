@@ -2,16 +2,24 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { ArrowRight, LockKeyhole, Users } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import SiacdApp from "./siacd-app";
 
 type CoordinatorOption = {
   id: string;
   full_name: string;
+  pin_configured: boolean;
 };
 
-type VerifyResult = {
+type PinOverviewRow = {
+  staff_id: string;
+  full_name: string;
+  active: boolean;
+  pin_configured: boolean;
+};
+
+type AccessResult = {
   ok?: boolean;
   reason?: string;
 };
@@ -22,10 +30,17 @@ export default function CoordinatorShell() {
   const [coordinators, setCoordinators] = useState<CoordinatorOption[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [authorizedId, setAuthorizedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
+
+  const selectedCoordinator = useMemo(
+    () => coordinators.find((coordinator) => coordinator.id === selectedId) ?? null,
+    [coordinators, selectedId],
+  );
+  const firstAccess = selectedCoordinator?.pin_configured === false;
 
   useEffect(() => {
     window.sessionStorage.removeItem(COORDINATOR_SESSION_KEY);
@@ -37,11 +52,7 @@ export default function CoordinatorShell() {
 
     let active = true;
     void supabase
-      .from("siacd_staff")
-      .select("id, full_name")
-      .eq("role", "coordinator")
-      .eq("active", true)
-      .order("full_name")
+      .rpc("coordinator_pin_overview")
       .then(({ data, error: loadError }) => {
         if (!active) return;
         if (loadError) {
@@ -49,7 +60,15 @@ export default function CoordinatorShell() {
           setLoading(false);
           return;
         }
-        const options = (data ?? []).map((item) => ({ id: String(item.id), full_name: String(item.full_name) }));
+
+        const options = ((data ?? []) as PinOverviewRow[])
+          .filter((item) => item.active)
+          .map((item) => ({
+            id: String(item.staff_id),
+            full_name: String(item.full_name),
+            pin_configured: Boolean(item.pin_configured),
+          }));
+
         setCoordinators(options);
         setSelectedId(options[0]?.id ?? "");
         setLoading(false);
@@ -64,20 +83,71 @@ export default function CoordinatorShell() {
       if (window.sessionStorage.getItem(COORDINATOR_SESSION_KEY) !== authorizedId) {
         setAuthorizedId("");
         setPin("");
+        setConfirmPin("");
         setError("");
       }
     }, 100);
     return () => window.clearInterval(timer);
   }, [authorizedId]);
 
+  function authorize(staffId: string) {
+    window.sessionStorage.setItem(COORDINATOR_SESSION_KEY, staffId);
+    setAuthorizedId(staffId);
+    setPin("");
+    setConfirmPin("");
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedId || pin.length !== 4) return;
+
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
 
+    if (firstAccess && confirmPin !== pin) {
+      setError("Los PIN no coinciden.");
+      return;
+    }
+
     setChecking(true);
     setError("");
+
+    if (firstAccess) {
+      const { data, error: registerError } = await supabase.rpc("coordinator_register_pin", {
+        p_staff_id: selectedId,
+        p_pin: pin,
+      });
+      setChecking(false);
+
+      if (registerError) {
+        setError("No se pudo crear el PIN. Intente nuevamente.");
+        return;
+      }
+
+      const result = (data ?? {}) as AccessResult;
+      if (result.ok) {
+        setCoordinators((current) =>
+          current.map((item) => item.id === selectedId ? { ...item, pin_configured: true } : item),
+        );
+        authorize(selectedId);
+        return;
+      }
+
+      if (result.reason === "pin_already_configured") {
+        setCoordinators((current) =>
+          current.map((item) => item.id === selectedId ? { ...item, pin_configured: true } : item),
+        );
+        setPin("");
+        setConfirmPin("");
+        setError("El PIN ya fue configurado. Ingrese su PIN actual para acceder.");
+      } else if (result.reason === "coordinator_not_available") {
+        setError("El coordinador seleccionado no está disponible.");
+      } else {
+        setError("No se pudo crear el PIN.");
+      }
+      return;
+    }
+
     const { data, error: verifyError } = await supabase.rpc("coordinator_verify_pin", {
       p_staff_id: selectedId,
       p_pin: pin,
@@ -89,16 +159,17 @@ export default function CoordinatorShell() {
       return;
     }
 
-    const result = (data ?? {}) as VerifyResult;
+    const result = (data ?? {}) as AccessResult;
     if (result.ok) {
-      window.sessionStorage.setItem(COORDINATOR_SESSION_KEY, selectedId);
-      setAuthorizedId(selectedId);
-      setPin("");
+      authorize(selectedId);
       return;
     }
 
     if (result.reason === "pin_not_configured") {
-      setError("Este coordinador todavía no tiene un PIN configurado. Solicítelo al administrador.");
+      setCoordinators((current) =>
+        current.map((item) => item.id === selectedId ? { ...item, pin_configured: false } : item),
+      );
+      setError("Es su primer ingreso. Cree un PIN personal de 4 dígitos.");
     } else if (result.reason === "coordinator_not_available") {
       setError("El coordinador seleccionado no está disponible.");
     } else {
@@ -108,6 +179,10 @@ export default function CoordinatorShell() {
   }
 
   if (authorizedId) return <SiacdApp forcedAccess="coordinator" />;
+
+  const canSubmit = firstAccess
+    ? pin.length === 4 && confirmPin.length === 4
+    : pin.length === 4;
 
   return (
     <div className="login-page">
@@ -119,7 +194,7 @@ export default function CoordinatorShell() {
         <div>
           <p className="eyebrow">Acceso de coordinadores</p>
           <h1>Ingreso protegido con PIN</h1>
-          <p>Seleccione su nombre e ingrese su PIN personal para acceder únicamente a sus carreras y docentes.</p>
+          <p>Seleccione su nombre. Si es su primer ingreso, cree su PIN personal; en los siguientes accesos solo deberá ingresarlo.</p>
         </div>
         <p>Proceso CGC-PRO-121 · Uso institucional</p>
       </section>
@@ -130,17 +205,38 @@ export default function CoordinatorShell() {
             <Users size={18} />
             <h2 style={{ margin: 0 }}>Coordinador de Carrera</h2>
           </div>
-          <p>El PIN es personal y consta de 4 dígitos.</p>
+          <p>
+            {firstAccess
+              ? "Primer ingreso: cree y confirme un PIN personal de 4 dígitos."
+              : "Ingrese su PIN personal de 4 dígitos."}
+          </p>
 
           {loading ? <div className="error-note">Cargando coordinadores…</div> : coordinators.length ? <>
             <div className="field">
               <label>Nombre</label>
-              <select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setError(""); }}>
-                {coordinators.map((coordinator) => <option key={coordinator.id} value={coordinator.id}>{coordinator.full_name}</option>)}
+              <select
+                value={selectedId}
+                onChange={(event) => {
+                  setSelectedId(event.target.value);
+                  setPin("");
+                  setConfirmPin("");
+                  setError("");
+                }}
+              >
+                {coordinators.map((coordinator) => (
+                  <option key={coordinator.id} value={coordinator.id}>{coordinator.full_name}</option>
+                ))}
               </select>
             </div>
+
+            {firstAccess && (
+              <div style={{ border: "1px solid #d7e4ef", borderRadius: 11, padding: 11, background: "#f5f9fc", fontSize: 12, color: "#48647a" }}>
+                Este coordinador todavía no tiene PIN. Créelo ahora para completar el primer ingreso.
+              </div>
+            )}
+
             <div className="field">
-              <label>PIN</label>
+              <label>{firstAccess ? "Nuevo PIN" : "PIN"}</label>
               <div style={{ position: "relative" }}>
                 <LockKeyhole size={15} style={{ position: "absolute", left: 12, top: 12, color: "#6b7d90" }} />
                 <input
@@ -148,7 +244,7 @@ export default function CoordinatorShell() {
                   inputMode="numeric"
                   pattern="[0-9]{4}"
                   maxLength={4}
-                  autoComplete="off"
+                  autoComplete={firstAccess ? "new-password" : "off"}
                   value={pin}
                   onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
                   style={{ paddingLeft: 36 }}
@@ -157,9 +253,39 @@ export default function CoordinatorShell() {
                 />
               </div>
             </div>
+
+            {firstAccess && (
+              <div className="field">
+                <label>Confirmar PIN</label>
+                <div style={{ position: "relative" }}>
+                  <LockKeyhole size={15} style={{ position: "absolute", left: 12, top: 12, color: "#6b7d90" }} />
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]{4}"
+                    maxLength={4}
+                    autoComplete="new-password"
+                    value={confirmPin}
+                    onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    style={{ paddingLeft: 36 }}
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
             {error && <div className="error-note">{error}</div>}
-            <button className="primary-button" type="submit" disabled={checking || pin.length !== 4} style={{ width: "100%", justifyContent: "center" }}>
-              {checking ? "Verificando…" : <>Ingresar <ArrowRight size={15} /></>}
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={checking || !canSubmit}
+              style={{ width: "100%", justifyContent: "center" }}
+            >
+              {checking
+                ? (firstAccess ? "Creando PIN…" : "Verificando…")
+                : firstAccess
+                  ? <>Crear PIN e ingresar <ArrowRight size={15} /></>
+                  : <>Ingresar <ArrowRight size={15} /></>}
             </button>
           </> : <div className="error-note">No existen coordinadores activos.</div>}
 
