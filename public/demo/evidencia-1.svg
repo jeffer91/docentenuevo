@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#f4f7fa"/>
+  <rect x="40" y="35" width="1200" height="650" rx="24" fill="#ffffff" stroke="#cfd8e3" stroke-width="3"/>
+  <rect x="40" y="35" width="1200" height="76" rx="24" fill="#153b5f"/>
+  <rect x="40" y="88" width="1200" height="23" fill="#153b5f"/>
+  <text x="78" y="82" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="white">EVIDENCIA DEMO · INDUCCIÓN INSTITUCIONAL</text>
+  <text x="80" y="150" font-family="Arial,sans-serif" font-size="20" fill="#516273">Captura ficticia creada únicamente para validación documental SIACD</text>
+  <rect x="82" y="188" width="760" height="410" rx="18" fill="#eef3f8"/>
+  <rect x="875" y="188" width="285" height="410" rx="18" fill="#f7f9fb" stroke="#d9e1e8"/>
+  <circle cx="460" cy="350" r="92" fill="#d5e3ef"/>
+  <path d="M420 335 L420 405 L515 370 Z" fill="#153b5f"/>
+  <text x="118" y="560" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#153b5f">Sesión de inducción · Teams</text>
+  <text x="910" y="245" font-family="Arial,sans-serif" font-size="21" font-weight="700" fill="#25394c">Participantes</text>
+  <g font-family="Arial,sans-serif" font-size="18" fill="#53677a">
+    <text x="910" y="295">• Docente DEMO</text>
+    <text x="910" y="335">• Coordinador DEMO</text>
+    <text x="910" y="375">• Talento Humano</text>
+    <text x="910" y="415">• Calidad</text>
+  </g>
+  <rect x="905" y="500" width="220" height="48" rx="10" fill="#e5f2ea"/>
+  <text x="947" y="531" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#2e6b49">COMPLETADO</text>
+  <text x="80" y="650" font-family="Arial,sans-serif" font-size="17" fill="#8a98a5">No corresponde a una reunión real ni contiene datos personales reales.</text>
+</svg>
