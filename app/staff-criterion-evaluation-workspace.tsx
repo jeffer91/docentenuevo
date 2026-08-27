@@ -255,7 +255,7 @@ export default function StaffCriterionEvaluationWorkspace({
   }, [phaseCriteria]);
 
   async function signedItemUrl(item: EvidenceItem) {
-    if (item.kind === "link") return item.external_url ?? "";
+    if (item.external_url) return item.external_url;
     if (itemUrls[item.id]) return itemUrls[item.id];
     const supabase = getSupabaseBrowserClient();
     if (!supabase || !staffId) return "";
