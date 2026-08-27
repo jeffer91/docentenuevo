@@ -74,3 +74,10 @@ test("el flujo legado de seis hitos no forma parte de la interfaz publicada", as
   assert.doesNotMatch(js, /0\/6 hitos validados/);
   assert.doesNotMatch(js, /H4 · Seguimiento 1/);
 });
+
+test("el acceso de coordinadores permite crear PIN en el primer ingreso", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Primer ingreso/);
+  assert.match(js, /Crear PIN e ingresar/);
+  assert.match(js, /Confirmar PIN/);
+});
