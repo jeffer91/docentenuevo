@@ -82,3 +82,12 @@ test("el acceso de coordinadores permite crear PIN en el primer ingreso", async 
   assert.match(js, /Crear PIN e ingresar/);
   assert.match(js, /Confirmar PIN/);
 });
+
+
+test("los informes usan portada institucional y firmas ancladas", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /COORDINACIÓN GENERAL DE CARRERAS/);
+  assert.match(js, /Coordinador\(a\) General de Carreras/);
+  assert.match(js, /DOCUMENTO OFICIAL/);
+  assert.match(js, /Datos del documento/);
+});
