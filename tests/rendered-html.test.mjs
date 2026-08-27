@@ -52,7 +52,7 @@ test("el bundle contiene la organización vigente", async () => {
 
 test("el portal docente incluye el desglose y carga de evidencias", async () => {
   const js = await bundledJavascript();
-  assert.match(js, /Evidencias por criterio/);
+  assert.match(js, /Criterios de acompañamiento/);
   assert.match(js, /Pegue aquí su captura/);
   assert.match(js, /Ctrl\+V/);
   assert.match(js, /máximo 3 evidencias/i);
