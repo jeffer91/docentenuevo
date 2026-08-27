@@ -718,7 +718,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.text(value, x + 4, top + 8.5);
         pdf.setTextColor(99, 113, 126);
         pdf.setFontSize(8);
-        pdf.text(label.toUpperCase(, x + 4, top + height - 4);
+        pdf.text(label.toUpperCase(), x + 4, top + height - 4);
       };
       const callout = (title: string, lines: string[], tone: "blue" | "amber") => {
         void tone;
@@ -840,7 +840,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
           pdf.setTextColor(101, 115, 128);
           pdf.setFont(institutionalFont, "bold");
           pdf.setFontSize(8);
-          pdf.text(label.toUpperCase(, x, top);
+          pdf.text(label.toUpperCase(), x, top);
           pdf.setTextColor(28, 42, 55);
           pdf.setFont(institutionalFont, "normal");
           pdf.setFontSize(9.5);
@@ -1043,7 +1043,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.text(titleLines, margin + 7, top + 8);
         pdf.setTextColor(r, g, b);
         pdf.setFontSize(8.5);
-        pdf.text(row.state.label.toUpperCase(, 190, top + 8, { align: "right" });
+        pdf.text(row.state.label.toUpperCase(), 190, top + 8, { align: "right" });
         let yy = top + 11 + titleLines.length * 4;
         pdf.setTextColor(55, 70, 84);
         pdf.setFont("times", "normal");
