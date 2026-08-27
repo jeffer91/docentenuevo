@@ -56,7 +56,7 @@ test("el portal docente incluye el desglose y carga de evidencias", async () => 
   assert.match(js, /Pegue aquí su captura/);
   assert.match(js, /Ctrl\+V/);
   assert.match(js, /máximo 3 evidencias/i);
-  assert.match(js, /Informes formales/);
+  assert.match(js, /Informes de acompañamiento/);
 });
 
 test("los informes distinguen avance, cumplimiento y verificación", async () => {
@@ -90,4 +90,7 @@ test("los informes usan portada institucional y firmas ancladas", async () => {
   assert.match(js, /Coordinador\(a\) General de Carreras/);
   assert.match(js, /DOCUMENTO OFICIAL/);
   assert.match(js, /Datos del documento/);
+  assert.match(js, /Acompañamiento docente/);
+  assert.match(js, /VERIFICACIÓN/);
+  assert.match(js, /criterios de presentación APA 7/);
 });
