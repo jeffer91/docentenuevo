@@ -352,7 +352,7 @@ export default function TeacherCriterionEvidenceWorkspace({
   }
 
   async function openItem(item: EvidenceItem) {
-    if (item.kind === "link" && item.external_url) {
+    if (item.external_url) {
       window.open(item.external_url, "_blank", "noopener,noreferrer");
       return;
     }
