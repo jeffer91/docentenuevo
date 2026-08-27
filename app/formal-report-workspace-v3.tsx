@@ -714,11 +714,11 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.roundedRect(x, top, width, height, 2, 2, "FD");
         pdf.setTextColor(...color);
         pdf.setFont("times", "bold");
-        pdf.setFontSize(value.length > 18 ? 8.8 : 12.2);
+        pdf.setFontSize(value.length > 18 ? 9 : 12);
         pdf.text(value, x + 4, top + 8.5);
         pdf.setTextColor(99, 113, 126);
-        pdf.setFontSize(6.5);
-        pdf.text(label.toUpperCase(), x + 4, top + height - 4);
+        pdf.setFontSize(8);
+        pdf.text(label.toUpperCase(, x + 4, top + height - 4);
       };
       const callout = (title: string, lines: string[], tone: "blue" | "amber") => {
         void tone;
@@ -839,11 +839,11 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         const meta = (label: string, value: string, x: number, top: number, width: number) => {
           pdf.setTextColor(101, 115, 128);
           pdf.setFont(institutionalFont, "bold");
-          pdf.setFontSize(7);
-          pdf.text(label.toUpperCase(), x, top);
+          pdf.setFontSize(8);
+          pdf.text(label.toUpperCase(, x, top);
           pdf.setTextColor(28, 42, 55);
           pdf.setFont(institutionalFont, "normal");
-          pdf.setFontSize(9);
+          pdf.setFontSize(9.5);
           pdf.text(pdf.splitTextToSize(value || "—", width), x, top + 5);
         };
         const metaTop = y;
@@ -1039,15 +1039,15 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.roundedRect(margin, top, 3, boxHeight, 1.5, 1.5, "F");
         pdf.setTextColor(24, 43, 62);
         pdf.setFont("times", "bold");
-        pdf.setFontSize(9.3);
+        pdf.setFontSize(10);
         pdf.text(titleLines, margin + 7, top + 8);
         pdf.setTextColor(r, g, b);
-        pdf.setFontSize(7.2);
-        pdf.text(row.state.label.toUpperCase(), 190, top + 8, { align: "right" });
+        pdf.setFontSize(8.5);
+        pdf.text(row.state.label.toUpperCase(, 190, top + 8, { align: "right" });
         let yy = top + 11 + titleLines.length * 4;
         pdf.setTextColor(55, 70, 84);
         pdf.setFont("times", "normal");
-        pdf.setFontSize(8.3);
+        pdf.setFontSize(9.5);
         pdf.text(explanationLines, margin + 7, yy);
         yy += explanationLines.length * 3.8 + 2.5;
         if (expectedEvidence.length) {
@@ -1073,7 +1073,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         }
         if (traceLines.length) {
           pdf.setFont("times", "normal");
-          pdf.setFontSize(7.8);
+          pdf.setFontSize(8.5);
           pdf.setTextColor(76, 91, 105);
           pdf.text(traceLines, margin + 7, yy);
         }
@@ -1137,12 +1137,12 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         if (qr) {
           pdf.addImage(qr, "PNG", margin, y, 28, 28);
           pdf.setFont("times", "normal");
-          pdf.setFontSize(7.5);
+          pdf.setFontSize(9);
           pdf.setTextColor(85, 98, 112);
           pdf.text("Escanee para verificar autenticidad", 50, y + 14);
           y += 33;
         } else {
-          line(`Verificación: ${verificationUrl}`, 7.5);
+          line(`Verificación: ${verificationUrl}`, 9);
         }
       };
 
