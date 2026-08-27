@@ -98,11 +98,40 @@ export default function CoordinatorShell() {
     setConfirmPin("");
   }
 
-  function changeCoordinator(staffId: string) {
+  async function changeCoordinator(staffId: string) {
     setSelectedId(staffId);
     setPin("");
     setConfirmPin("");
     setError("");
+
+    const option = coordinators.find((item) => item.id === staffId);
+    if (!option || option.pin_configured || option.full_name !== "COORDINADOR DEMO SIACD") return;
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    setChecking(true);
+    const { data, error: registerError } = await supabase.rpc("coordinator_register_pin", {
+      p_staff_id: option.id,
+      p_pin: "5626",
+    });
+    setChecking(false);
+
+    if (registerError) {
+      setError("No se pudo preparar el PIN del coordinador DEMO.");
+      return;
+    }
+
+    const result = (data ?? {}) as AccessResult;
+    if (result.ok || result.reason === "pin_already_configured") {
+      setCoordinators((current) =>
+        current.map((item) => item.id === option.id ? { ...item, pin_configured: true } : item),
+      );
+      setError("");
+      return;
+    }
+
+    setError("No se pudo preparar el acceso del coordinador DEMO.");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -231,7 +260,7 @@ export default function CoordinatorShell() {
               <label>Nombre</label>
               <select
                 value={selectedId}
-                onChange={(event) => changeCoordinator(event.target.value)}
+                onChange={(event) => { void changeCoordinator(event.target.value); }}
                 disabled={checking}
               >
                 <option value="" disabled>Seleccione su nombre</option>
@@ -241,7 +270,13 @@ export default function CoordinatorShell() {
               </select>
             </div>
 
-            {selectedCoordinator && firstAccess && (
+            {selectedCoordinator && selectedCoordinator.full_name === "COORDINADOR DEMO SIACD" && (
+              <div style={{ border: "1px solid #d7e4ef", borderRadius: 11, padding: 11, background: "#f5f9fc", fontSize: 12, color: "#48647a" }}>
+                Acceso de prueba. PIN DEMO: <strong>5626</strong>. Este coordinador está vinculado únicamente al docente de prueba.
+              </div>
+            )}
+
+            {selectedCoordinator && firstAccess && selectedCoordinator.full_name !== "COORDINADOR DEMO SIACD" && (
               <div style={{ border: "1px solid #d7e4ef", borderRadius: 11, padding: 11, background: "#f5f9fc", fontSize: 12, color: "#48647a" }}>
                 Primer ingreso de {selectedCoordinator.full_name}. Cree su PIN personal para continuar.
               </div>
