@@ -1,7 +1,7 @@
 -- SIACD · Escenario DEMO completo para revisión documental
--- Crea un coordinador de prueba con PIN 5626, una carrera/periodo aislados,
--- un docente DEMO con expediente completo y evidencias visuales ficticias.
--- Todo queda claramente identificado como DEMO para no confundirse con información institucional real.
+-- Crea un coordinador de prueba con PIN 5626 y lo vincula al docente DEMO.
+-- Si el docente DEMO no existe en una instalación nueva, crea un fallback aislado.
+-- Todo queda identificado como DEMO para no confundirse con información institucional real.
 
 alter table public.evidence_submission_items
   drop constraint if exists evidence_submission_items_payload_check;
@@ -91,26 +91,30 @@ grant execute on function public.staff_apply_demo_images(uuid, uuid) to anon, au
 
 do $$
 declare
-  v_staff_id uuid := '00000000-0000-4000-8000-000000005626'::uuid;
-  v_career_id uuid := '00000000-0000-4000-8000-00000000d001'::uuid;
-  v_period_id uuid := '00000000-0000-4000-8000-00000000d002'::uuid;
-  v_teacher_id uuid := '00000000-0000-4000-8000-00000000d003'::uuid;
-  v_expedient_id uuid := '00000000-0000-4000-8000-00000000d004'::uuid;
+  v_staff_id uuid;
+  v_teacher_id uuid;
+  v_expedient_id uuid;
+  v_career_id uuid;
+  v_period_id uuid;
 begin
-  insert into public.siacd_staff(id, full_name, role, active, created_at, updated_at)
-  values (
-    v_staff_id,
-    'COORDINADOR DEMO SIACD',
-    'coordinator',
-    true,
-    now(),
-    now()
-  )
-  on conflict (id) do update
-  set full_name = excluded.full_name,
-      role = 'coordinator',
-      active = true,
-      updated_at = now();
+  select s.id
+  into v_staff_id
+  from public.siacd_staff s
+  where upper(trim(s.full_name)) = 'COORDINADOR DEMO SIACD'
+    and s.role::text = 'coordinator'
+  order by s.created_at
+  limit 1;
+
+  if v_staff_id is null then
+    insert into public.siacd_staff(full_name, role, active, created_at, updated_at)
+    values ('COORDINADOR DEMO SIACD', 'coordinator', true, now(), now())
+    returning id into v_staff_id;
+  else
+    update public.siacd_staff
+    set active = true,
+        updated_at = now()
+    where id = v_staff_id;
+  end if;
 
   insert into private.coordinator_pins(staff_id, pin_hash, changed_at)
   values (
@@ -122,70 +126,44 @@ begin
   set pin_hash = excluded.pin_hash,
       changed_at = excluded.changed_at;
 
-  insert into public.careers(id, campus_id, name, modality, active)
-  values (
-    v_career_id,
-    null,
-    'DEMO · REVISIÓN DOCUMENTAL SIACD',
-    'Presencial',
-    true
-  )
-  on conflict (id) do update
-  set name = excluded.name,
-      modality = excluded.modality,
-      active = true;
+  select t.id
+  into v_teacher_id
+  from public.teachers t
+  where t.national_id = '9999999999'
+     or upper(t.full_name) like '%DEMO%'
+  order by
+    case when t.national_id = '9999999999' then 0 else 1 end,
+    t.created_at
+  limit 1;
 
-  delete from public.siacd_staff_careers
-  where career_id = v_career_id
-    and staff_id <> v_staff_id;
+  if v_teacher_id is null then
+    insert into public.teachers(
+      full_name,
+      institutional_email,
+      started_institution_on,
+      active,
+      created_by,
+      national_id,
+      created_at,
+      updated_at
+    )
+    values (
+      'DOCENTE DEMO SIACD',
+      'docente.demo@demo.siacd.local',
+      date '2026-01-05',
+      true,
+      null,
+      '9999999999',
+      now(),
+      now()
+    )
+    returning id into v_teacher_id;
+  end if;
 
-  insert into public.siacd_staff_careers(staff_id, career_id)
-  values (v_staff_id, v_career_id)
-  on conflict (staff_id, career_id) do nothing;
-
-  insert into public.academic_periods(id, name, starts_on, ends_on, active)
-  values (
-    v_period_id,
-    'DEMO SIACD 2026',
-    date '2026-01-01',
-    date '2026-12-31',
-    true
-  )
-  on conflict (id) do update
-  set name = excluded.name,
-      starts_on = excluded.starts_on,
-      ends_on = excluded.ends_on,
-      active = true;
-
-  insert into public.teachers(
-    id,
-    full_name,
-    institutional_email,
-    started_institution_on,
-    active,
-    created_by,
-    created_at,
-    updated_at,
-    national_id
-  )
-  values (
-    v_teacher_id,
-    'DOCENTE DEMO SIACD',
-    'docente.demo@demo.siacd.local',
-    date '2026-01-05',
-    true,
-    null,
-    now(),
-    now(),
-    '0000000000'
-  )
-  on conflict (id) do update
-  set full_name = excluded.full_name,
-      institutional_email = excluded.institutional_email,
-      started_institution_on = excluded.started_institution_on,
-      active = true,
-      national_id = excluded.national_id,
-      updated_at = now();
+  update public.teachers
+  set active = true,
+      updated_at = now()
+  where id = v_teacher_id;
 
   insert into public.teacher_access(
     teacher_id,
@@ -194,91 +172,102 @@ begin
     created_at,
     updated_at
   )
-  values (
+  select
     v_teacher_id,
-    'docente.demo@demo.siacd.local',
+    coalesce(nullif(lower(trim(t.institutional_email)), ''), 'docente.demo@demo.siacd.local'),
     true,
     now(),
     now()
-  )
+  from public.teachers t
+  where t.id = v_teacher_id
   on conflict (teacher_id) do update
-  set email = excluded.email,
-      active = true,
+  set active = true,
       updated_at = now();
 
-  delete from public.expedients
-  where teacher_id = v_teacher_id
-    and id <> v_expedient_id;
+  select e.id
+  into v_expedient_id
+  from public.expedients e
+  where e.teacher_id = v_teacher_id
+  order by e.created_at desc
+  limit 1;
 
-  insert into public.expedients(
-    id,
-    teacher_id,
-    career_id,
-    period_id,
-    coordinator_id,
-    coordinator_staff_id,
-    subject_names,
-    modality,
-    schedule_text,
-    activities_start_on,
-    planned_close_on,
-    teams_code,
-    telegram_url,
-    status,
-    operational_score,
-    complementary_score,
-    quality_score,
-    final_score,
-    submitted_at,
-    approved_at,
-    created_at,
-    updated_at
-  )
-  values (
-    v_expedient_id,
-    v_teacher_id,
-    v_career_id,
-    v_period_id,
-    null,
-    v_staff_id,
-    'ASIGNATURA DEMO · REVISIÓN DOCUMENTAL',
-    'Presencial',
-    'Lunes a viernes · 18:00 a 20:00 · Horario ficticio',
-    date '2026-01-05',
-    date '2026-12-15',
-    'DEMO-SIACD',
-    'https://t.me/demo_siacd_no_real',
-    'approved',
-    1,
-    1,
-    1,
-    1,
-    now() - interval '10 days',
-    now() - interval '2 days',
-    now(),
-    now()
-  )
-  on conflict (id) do update
-  set teacher_id = excluded.teacher_id,
-      career_id = excluded.career_id,
-      period_id = excluded.period_id,
-      coordinator_id = null,
-      coordinator_staff_id = excluded.coordinator_staff_id,
-      subject_names = excluded.subject_names,
-      modality = excluded.modality,
-      schedule_text = excluded.schedule_text,
-      activities_start_on = excluded.activities_start_on,
-      planned_close_on = excluded.planned_close_on,
-      teams_code = excluded.teams_code,
-      telegram_url = excluded.telegram_url,
-      status = 'approved',
-      operational_score = 1,
-      complementary_score = 1,
-      quality_score = 1,
-      final_score = 1,
-      submitted_at = excluded.submitted_at,
-      approved_at = excluded.approved_at,
-      updated_at = now();
+  if v_expedient_id is null then
+    select c.id into v_career_id
+    from public.careers c
+    where c.active
+    order by c.name
+    limit 1;
+
+    select ap.id into v_period_id
+    from public.academic_periods ap
+    where ap.active
+    order by ap.starts_on desc
+    limit 1;
+
+    if v_career_id is null or v_period_id is null then
+      raise exception 'demo_catalog_required';
+    end if;
+
+    insert into public.expedients(
+      teacher_id,
+      career_id,
+      period_id,
+      coordinator_id,
+      coordinator_staff_id,
+      subject_names,
+      modality,
+      schedule_text,
+      activities_start_on,
+      planned_close_on,
+      teams_code,
+      telegram_url,
+      status,
+      operational_score,
+      complementary_score,
+      quality_score,
+      final_score,
+      submitted_at,
+      approved_at,
+      created_at,
+      updated_at
+    )
+    values (
+      v_teacher_id,
+      v_career_id,
+      v_period_id,
+      null,
+      v_staff_id,
+      'ASIGNATURA DEMO · REVISIÓN DOCUMENTAL',
+      'Presencial',
+      'Lunes a viernes · 18:00 a 20:00 · Horario ficticio',
+      date '2026-01-05',
+      date '2026-12-15',
+      'DEMO-SIACD',
+      'https://t.me/demo_siacd_no_real',
+      'approved',
+      1,
+      1,
+      1,
+      1,
+      now() - interval '10 days',
+      now() - interval '2 days',
+      now(),
+      now()
+    )
+    returning id into v_expedient_id;
+  else
+    update public.expedients
+    set coordinator_staff_id = v_staff_id,
+        status = 'approved',
+        operational_score = 1,
+        complementary_score = 1,
+        quality_score = 1,
+        final_score = 1,
+        submitted_at = coalesce(submitted_at, now() - interval '10 days'),
+        approved_at = coalesce(approved_at, now() - interval '2 days'),
+        updated_at = now()
+    where id = v_expedient_id;
+  end if;
 
   insert into public.hito_schedules(
     expedient_id,
@@ -312,7 +301,8 @@ begin
   );
 
   update public.expedients
-  set status = 'approved',
+  set coordinator_staff_id = v_staff_id,
+      status = 'approved',
       operational_score = 1,
       complementary_score = 1,
       quality_score = 1,
