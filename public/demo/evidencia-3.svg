@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#f3f6f8"/>
+  <rect x="38" y="35" width="1204" height="650" rx="22" fill="#ffffff" stroke="#d3dce4" stroke-width="3"/>
+  <rect x="38" y="35" width="1204" height="80" rx="22" fill="#193f63"/>
+  <rect x="38" y="92" width="1204" height="23" fill="#193f63"/>
+  <text x="80" y="84" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="white">EVIDENCIA DEMO · SEGUIMIENTO ACADÉMICO</text>
+  <text x="82" y="157" font-family="Arial,sans-serif" font-size="20" fill="#5a6c7c">Panel ficticio de avance del docente para pruebas institucionales</text>
+  <g>
+    <rect x="82" y="205" width="330" height="130" rx="18" fill="#edf5fb"/>
+    <rect x="475" y="205" width="330" height="130" rx="18" fill="#eef7f1"/>
+    <rect x="868" y="205" width="290" height="130" rx="18" fill="#f7f3eb"/>
+  </g>
+  <g font-family="Arial,sans-serif" fill="#263d50">
+    <text x="115" y="250" font-size="18">Criterios revisados</text>
+    <text x="115" y="305" font-size="42" font-weight="700">129 / 129</text>
+    <text x="508" y="250" font-size="18">Cumplimiento</text>
+    <text x="508" y="305" font-size="42" font-weight="700">100 %</text>
+    <text x="900" y="250" font-size="18">Estado</text>
+    <text x="900" y="305" font-size="30" font-weight="700">APROBADO</text>
+  </g>
+  <rect x="82" y="390" width="1076" height="205" rx="18" fill="#fafbfd" stroke="#e1e7ec"/>
+  <text x="118" y="435" font-family="Arial,sans-serif" font-size="22" font-weight="700" fill="#2b4357">Trazabilidad de acompañamiento</text>
+  <line x1="145" y1="520" x2="1090" y2="520" stroke="#bfd0dc" stroke-width="8" stroke-linecap="round"/>
+  <g fill="#2f6b97">
+    <circle cx="190" cy="520" r="18"/><circle cx="455" cy="520" r="18"/><circle cx="720" cy="520" r="18"/><circle cx="1045" cy="520" r="18"/>
+  </g>
+  <g font-family="Arial,sans-serif" font-size="17" fill="#53697b">
+    <text x="155" y="565">Áreas</text><text x="420" y="565">Antes</text><text x="685" y="565">Durante</text><text x="1010" y="565">Después</text>
+  </g>
+  <text x="80" y="655" font-family="Arial,sans-serif" font-size="17" fill="#8a98a5">Datos completamente ficticios. Uso exclusivo para validación de SIACD.</text>
+</svg>
