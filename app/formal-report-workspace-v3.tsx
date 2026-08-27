@@ -557,14 +557,19 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const code = `SIACD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(code)}`;
       const institutionalLogo = await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
-      const generalCoordinatorName = ((staffResult.data ?? []) as StaffRow[]).find((item) => item.role === "approver")?.full_name ?? "";
+      const approverStaff = ((staffResult.data ?? []) as StaffRow[]).filter((item) => item.role === "approver");
+      const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "";
 
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const pageWidth = 210;
       const pageHeight = 297;
-      const margin = 16;
-      const contentWidth = 178;
+      const headerMargin = 16;
+      const headerWidth = 178;
+      const margin = 25.4;
+      const contentWidth = pageWidth - margin * 2;
+      const institutionalFont = "helvetica";
+      const bodyFont = "times";
       let y = 29;
       let figureNumber = 0;
       let tableNumber = 0;
@@ -573,14 +578,14 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         const top = 10;
         const height = 30;
         const leftWidth = 46;
-        const centerWidth = 94;
-        const rightWidth = contentWidth - leftWidth - centerWidth;
-        const leftX = margin;
+        const rightWidth = 38;
+        const centerWidth = headerWidth - leftWidth - rightWidth;
+        const leftX = headerMargin;
         const centerX = leftX + leftWidth;
         const rightX = centerX + centerWidth;
 
         pdf.setFillColor(255, 255, 255);
-        pdf.rect(margin - 1, top - 1, contentWidth + 2, height + 2, "F");
+        pdf.rect(headerMargin - 1, top - 1, headerWidth + 2, height + 2, "F");
         pdf.setDrawColor(74, 92, 108);
         pdf.setLineWidth(0.25);
         pdf.rect(leftX, top, leftWidth, height);
@@ -588,86 +593,120 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.rect(rightX, top, rightWidth, height);
 
         if (institutionalLogo) {
-          pdf.addImage(institutionalLogo, "PNG", leftX + 4, top + 3, leftWidth - 8, 13);
+          pdf.addImage(institutionalLogo, "PNG", leftX + 4, top + 5, leftWidth - 8, 14);
         } else {
-          pdf.setFont("helvetica", "bold");
+          pdf.setFont(institutionalFont, "bold");
           pdf.setFontSize(9);
           pdf.setTextColor(13, 41, 70);
-          pdf.text("ITSQMET", leftX + leftWidth / 2, top + 10, { align: "center" });
+          pdf.text("ITSQMET", leftX + leftWidth / 2, top + 12, { align: "center" });
         }
-
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(6.6);
+        pdf.setFont(institutionalFont, "normal");
+        pdf.setFontSize(7.4);
         pdf.setTextColor(45, 58, 70);
-        pdf.text("Fecha de Elaboración:", leftX + 3, top + 22);
-        pdf.setFont("helvetica", "bold");
-        pdf.text(formatDate(ecuadorToday()), leftX + 3, top + 26);
+        pdf.text("Acompañamiento docente", leftX + leftWidth / 2, top + 25, { align: "center" });
 
-        pdf.line(centerX, top + 8, centerX + centerWidth, top + 8);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(8.2);
+        pdf.line(centerX, top + 9, centerX + centerWidth, top + 9);
+        pdf.setFont(institutionalFont, "bold");
+        pdf.setFontSize(7.5);
         pdf.setTextColor(13, 41, 70);
-        pdf.text("COORDINACIÓN GENERAL DE CARRERAS", centerX + centerWidth / 2, top + 5.4, { align: "center" });
+        const careerLines = pdf.splitTextToSize(teacher.career || "Carrera no registrada", centerWidth - 6);
+        pdf.text(careerLines.slice(0, 2), centerX + centerWidth / 2, top + 4.6, { align: "center" });
+
         const headerTitle = pdf.splitTextToSize(definition.title, centerWidth - 6);
-        pdf.setFont("helvetica", "normal");
+        pdf.setFont(institutionalFont, "normal");
         pdf.setFontSize(9);
         pdf.setTextColor(25, 38, 50);
-        pdf.text(headerTitle, centerX + centerWidth / 2, top + 14, { align: "center" });
+        pdf.text(headerTitle.slice(0, 3), centerX + centerWidth / 2, top + 15, { align: "center" });
 
         pdf.line(rightX, top + 10, rightX + rightWidth, top + 10);
         pdf.line(rightX, top + 20, rightX + rightWidth, top + 20);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(6.2);
-        pdf.setTextColor(45, 58, 70);
-        pdf.text("CÓDIGO", rightX + 2, top + 3.7);
-        pdf.setFont("helvetica", "normal");
+        pdf.setFont(institutionalFont, "bold");
         pdf.setFontSize(6.3);
+        pdf.setTextColor(45, 58, 70);
+        pdf.text("VERIFICACIÓN", rightX + 2, top + 3.7);
+        pdf.setFont(institutionalFont, "normal");
+        pdf.setFontSize(6.2);
         const codeLines = pdf.splitTextToSize(code, rightWidth - 4);
         pdf.text(codeLines.slice(0, 2), rightX + 2, top + 7);
 
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(6.3);
+        pdf.setFont(institutionalFont, "bold");
+        pdf.setFontSize(6.5);
         pdf.text("Versión:", rightX + 2, top + 14);
-        pdf.setFont("helvetica", "normal");
-        pdf.text(version === 1 ? "1.0" : String(version), rightX + 16, top + 14);
+        pdf.setFont(institutionalFont, "normal");
+        pdf.text(String(version), rightX + 16, top + 14);
 
-        pdf.setFont("helvetica", "bold");
+        pdf.setFont(institutionalFont, "bold");
         pdf.text("Página:", rightX + 2, top + 24);
-        pdf.setFont("helvetica", "normal");
+        pdf.setFont(institutionalFont, "normal");
         pdf.text(pageNumber && totalPages ? `${pageNumber} de ${totalPages}` : "—", rightX + 16, top + 24);
 
-        y = 47;
+        y = 49;
       };
       const newPage = () => { pdf.addPage(); pageHeader(); };
-      const ensure = (height = 16) => { if (y + height > pageHeight - 18) newPage(); };
+      const ensure = (height = 16) => { if (y + height > pageHeight - 20) newPage(); };
       const spacer = (height = 5) => { y += height; };
-      const line = (text: string, size = 9.5, bold = false, color: [number, number, number] = [35, 51, 67], indent = 0, italic = false) => {
+
+      const line = (text: string, size = 10, bold = false, color: [number, number, number] = [35, 51, 67], indent = 0, italic = false) => {
         if (!text) return;
-        pdf.setFont("times", bold ? (italic ? "bolditalic" : "bold") : (italic ? "italic" : "normal"));
+        pdf.setFont(bodyFont, bold ? (italic ? "bolditalic" : "bold") : (italic ? "italic" : "normal"));
         pdf.setFontSize(size);
         pdf.setTextColor(...color);
         const wrapped = pdf.splitTextToSize(text, contentWidth - indent);
-        ensure(wrapped.length * 4.6 + 3);
+        const lineHeight = Math.max(4.4, size * 0.48);
+        ensure(wrapped.length * lineHeight + 3);
         pdf.text(wrapped, margin + indent, y);
-        y += wrapped.length * 4.6 + 2.5;
+        y += wrapped.length * lineHeight + 2.5;
       };
+
+      const apaParagraph = (text: string, options?: { bold?: boolean; italic?: boolean; indentFirstLine?: boolean }) => {
+        if (!text) return;
+        const bold = Boolean(options?.bold);
+        const italic = Boolean(options?.italic);
+        const firstIndent = options?.indentFirstLine === false ? 0 : 12.7;
+        pdf.setFont(bodyFont, bold ? (italic ? "bolditalic" : "bold") : (italic ? "italic" : "normal"));
+        pdf.setFontSize(12);
+        pdf.setTextColor(0, 0, 0);
+
+        const words = text.trim().split(/\s+/);
+        const lines: string[] = [];
+        let current = "";
+        words.forEach((word) => {
+          const candidate = current ? `${current} ${word}` : word;
+          const available = contentWidth - (lines.length === 0 ? firstIndent : 0);
+          if (current && pdf.getTextWidth(candidate) > available) {
+            lines.push(current);
+            current = word;
+          } else {
+            current = candidate;
+          }
+        });
+        if (current) lines.push(current);
+
+        const lineHeight = 8.45;
+        ensure(lines.length * lineHeight + 3);
+        lines.forEach((textLine, index) => {
+          pdf.text(textLine, margin + (index === 0 ? firstIndent : 0), y + index * lineHeight);
+        });
+        y += lines.length * lineHeight + 4.2;
+      };
+
       const section = (title: string, subtitle?: string) => {
-        ensure(subtitle ? 22 : 15);
-        spacer(6);
-        pdf.setFillColor(239, 244, 248);
-        pdf.roundedRect(margin, y - 4, contentWidth, subtitle ? 16 : 10, 2, 2, "F");
-        pdf.setTextColor(13, 55, 89);
-        pdf.setFont("times", "bold");
-        pdf.setFontSize(11.5);
-        pdf.text(title, margin + 4, y + 2);
+        ensure(subtitle ? 28 : 18);
+        spacer(8);
+        pdf.setTextColor(0, 0, 0);
+        pdf.setFont(bodyFont, "bold");
+        pdf.setFontSize(12);
+        const titleLines = pdf.splitTextToSize(title, contentWidth);
+        pdf.text(titleLines, pageWidth / 2, y, { align: "center" });
+        y += titleLines.length * 5.2 + 3;
         if (subtitle) {
-          pdf.setTextColor(91, 107, 121);
-          pdf.setFont("times", "normal");
-          pdf.setFontSize(8.3);
-          pdf.text(pdf.splitTextToSize(subtitle, contentWidth - 8), margin + 4, y + 7.5);
-          y += 15;
-        } else y += 9;
-        spacer(5);
+          pdf.setFont(bodyFont, "normal");
+          pdf.setFontSize(11);
+          const subtitleLines = pdf.splitTextToSize(subtitle, contentWidth);
+          pdf.text(subtitleLines, margin, y);
+          y += subtitleLines.length * 5.2 + 3;
+        }
+        spacer(3);
       };
       const card = (x: number, top: number, width: number, height: number, label: string, value: string, color: [number, number, number]) => {
         pdf.setFillColor(249, 251, 252);
@@ -681,29 +720,22 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.setFontSize(6.5);
         pdf.text(label.toUpperCase(), x + 4, top + height - 4);
       };
-      const callout = (title: string, lines: string[], tone: "blue" | "amber") => {
-        const wrappedLines = lines.flatMap((text) => pdf.splitTextToSize(`• ${text}`, contentWidth - 14));
-        const height = Math.max(20, 14 + wrappedLines.length * 4.1);
-        ensure(height + 6);
-        const bg = tone === "amber" ? [255, 248, 235] : [241, 247, 252];
-        const border = tone === "amber" ? [230, 190, 122] : [194, 215, 232];
-        pdf.setFillColor(bg[0], bg[1], bg[2]);
-        pdf.setDrawColor(border[0], border[1], border[2]);
-        pdf.roundedRect(margin, y, contentWidth, height, 2, 2, "FD");
-        pdf.setFont("times", "bold");
-        pdf.setFontSize(10.3);
-        pdf.setTextColor(28, 62, 91);
-        pdf.text(title, margin + 5, y + 7);
-        let yy = y + 13;
-        pdf.setFont("times", "normal");
-        pdf.setFontSize(8.7);
-        pdf.setTextColor(54, 70, 86);
-        lines.forEach((text) => {
-          const textLines = pdf.splitTextToSize(`• ${text}`, contentWidth - 12);
-          pdf.text(textLines, margin + 6, yy);
-          yy += textLines.length * 4.1 + 2;
+      const callout = (title: string, lines: string[], _tone: "blue" | "amber") => {
+        ensure(18);
+        pdf.setFont(bodyFont, "bold");
+        pdf.setFontSize(12);
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(title, margin, y);
+        y += 8.45;
+        lines.forEach((item) => {
+          const wrapped = pdf.splitTextToSize(item, contentWidth - 12.7);
+          ensure(wrapped.length * 8.45 + 4);
+          pdf.setFont(bodyFont, "normal");
+          pdf.setFontSize(12);
+          pdf.text("•", margin + 3, y);
+          pdf.text(wrapped, margin + 12.7, y);
+          y += wrapped.length * 8.45 + 4.2;
         });
-        y += height + 7;
       };
       const apaFigure = (title: string, image: string, height: number, note: string) => {
         if (!image) return;
@@ -711,19 +743,19 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         const titleLines = pdf.splitTextToSize(title, contentWidth);
         const noteLines = pdf.splitTextToSize(note, contentWidth - 8);
         ensure(8 + titleLines.length * 4.2 + height + 7 + noteLines.length * 4.1 + 8);
-        pdf.setFont("times", "bold");
-        pdf.setFontSize(9.5);
+        pdf.setFont(bodyFont, "bold");
+        pdf.setFontSize(10.5);
         pdf.setTextColor(25, 38, 50);
         pdf.text(`Figura ${figureNumber}`, margin, y);
         y += 5;
-        pdf.setFont("times", "italic");
-        pdf.setFontSize(9.5);
+        pdf.setFont(bodyFont, "italic");
+        pdf.setFontSize(10.5);
         pdf.text(titleLines, margin, y);
         y += titleLines.length * 4.2 + 3;
         pdf.addImage(image, "PNG", margin + 5, y, contentWidth - 10, height);
         y += height + 4;
-        pdf.setFont("times", "italic");
-        pdf.setFontSize(8.2);
+        pdf.setFont(bodyFont, "italic");
+        pdf.setFontSize(9.5);
         pdf.text("Nota.", margin, y);
         pdf.setFont("times", "normal");
         pdf.text(noteLines, margin + 9, y);
@@ -732,19 +764,19 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const apaTableTitle = (title: string, note: string) => {
         tableNumber += 1;
         ensure(18);
-        pdf.setFont("times", "bold");
-        pdf.setFontSize(9.5);
+        pdf.setFont(bodyFont, "bold");
+        pdf.setFontSize(10.5);
         pdf.setTextColor(25, 38, 50);
         pdf.text(`Tabla ${tableNumber}`, margin, y);
         y += 5;
-        pdf.setFont("times", "italic");
-        pdf.setFontSize(9.5);
+        pdf.setFont(bodyFont, "italic");
+        pdf.setFontSize(10.5);
         pdf.text(pdf.splitTextToSize(title, contentWidth), margin, y);
         y += 6;
         return () => {
           const noteLines = pdf.splitTextToSize(note, contentWidth - 8);
-          pdf.setFont("times", "italic");
-          pdf.setFontSize(8.1);
+          pdf.setFont(bodyFont, "italic");
+          pdf.setFontSize(9.5);
           pdf.text("Nota.", margin, y);
           pdf.setFont("times", "normal");
           pdf.text(noteLines, margin + 9, y);
@@ -756,13 +788,13 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pageHeader();
 
         pdf.setTextColor(13, 41, 70);
-        pdf.setFont("helvetica", "bold");
+        pdf.setFont(institutionalFont, "bold");
         pdf.setFontSize(23);
         const coverTitle = pdf.splitTextToSize(definition.title, 160);
         const titleTop = 105 - Math.max(0, coverTitle.length - 1) * 5;
         pdf.text(coverTitle, pageWidth / 2, titleTop, { align: "center" });
 
-        pdf.setFont("helvetica", "normal");
+        pdf.setFont(institutionalFont, "normal");
         pdf.setFontSize(10);
         pdf.setTextColor(82, 98, 113);
         const coverSubtitle = pdf.splitTextToSize(definition.subtitle, 145);
@@ -771,13 +803,13 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.setFillColor(official ? 229 : 255, official ? 246 : 243, official ? 235 : 215);
         pdf.setTextColor(official ? 34 : 141, official ? 104 : 88, official ? 64 : 18);
         pdf.roundedRect(82, 146, 46, 10, 2, 2, "F");
-        pdf.setFont("helvetica", "bold");
+        pdf.setFont(institutionalFont, "bold");
         pdf.setFontSize(8);
         pdf.text(official ? "DOCUMENTO OFICIAL" : "BORRADOR", pageWidth / 2, 152.5, { align: "center" });
 
         const signatureTop = 232;
         const signatureHeight = 43;
-        const signatureWidth = contentWidth / 3;
+        const signatureWidth = headerWidth / 3;
         const signatureRoles = [
           { role: "Docente", name: teacher.name },
           { role: "Coordinador(a) de Carrera", name: coordinatorName || "—" },
@@ -787,16 +819,16 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.setDrawColor(110, 122, 133);
         pdf.setLineWidth(0.25);
         signatureRoles.forEach((item, index) => {
-          const x = margin + index * signatureWidth;
+          const x = headerMargin + index * signatureWidth;
           pdf.rect(x, signatureTop, signatureWidth, signatureHeight);
           pdf.line(x + 8, signatureTop + 21, x + signatureWidth - 8, signatureTop + 21);
-          pdf.setFont("helvetica", "normal");
+          pdf.setFont(institutionalFont, "normal");
           pdf.setFontSize(9);
           pdf.setTextColor(28, 42, 55);
           const nameLines = pdf.splitTextToSize(item.name, signatureWidth - 8);
           pdf.text(nameLines, x + signatureWidth / 2, signatureTop + 27, { align: "center" });
-          pdf.setFont("helvetica", "bold");
-          pdf.setFontSize(8.5);
+          pdf.setFont(institutionalFont, "bold");
+          pdf.setFontSize(9);
           const roleLines = pdf.splitTextToSize(item.role, signatureWidth - 6);
           pdf.text(roleLines, x + signatureWidth / 2, signatureTop + 36, { align: "center" });
         });
@@ -805,23 +837,24 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         section("Datos del documento");
         const meta = (label: string, value: string, x: number, top: number, width: number) => {
           pdf.setTextColor(101, 115, 128);
-          pdf.setFont("helvetica", "bold");
+          pdf.setFont(institutionalFont, "bold");
           pdf.setFontSize(7);
           pdf.text(label.toUpperCase(), x, top);
           pdf.setTextColor(28, 42, 55);
-          pdf.setFont("helvetica", "normal");
+          pdf.setFont(institutionalFont, "normal");
           pdf.setFontSize(9);
           pdf.text(pdf.splitTextToSize(value || "—", width), x, top + 5);
         };
         const metaTop = y;
+        const metaGap = 8;
+        const metaCol = (contentWidth - metaGap) / 2;
         pdf.setDrawColor(218, 226, 232);
-        pdf.roundedRect(margin, metaTop - 4, contentWidth, 36, 2, 2, "S");
-        meta("Docente", teacher.name, 20, metaTop + 3, 73);
-        meta("Carrera", teacher.career, 102, metaTop + 3, 87);
-        meta("Asignatura", teacher.subject, 20, metaTop + 18, 73);
-        meta("Período / modalidad", `${teacher.period} · ${teacher.modality}`, 102, metaTop + 18, 87);
-        y = metaTop + 40;
-        line("Documento generado por SIACD con portada institucional, encabezado repetible y estructura de contenido formal.", 8.3, false, [95, 107, 119], 0, true);
+        pdf.roundedRect(margin, metaTop - 4, contentWidth, 40, 2, 2, "S");
+        meta("Docente", teacher.name, margin + 4, metaTop + 3, metaCol - 8);
+        meta("Carrera", teacher.career, margin + metaCol + metaGap, metaTop + 3, metaCol - 8);
+        meta("Asignatura", teacher.subject, margin + 4, metaTop + 20, metaCol - 8);
+        meta("Período / modalidad", `${teacher.period} · ${teacher.modality}`, margin + metaCol + metaGap, metaTop + 20, metaCol - 8);
+        y = metaTop + 45;
       };
 
       const drawStatsTable = (reportRows: CriterionRow[]) => {
@@ -964,7 +997,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         const narrative = current.evaluated === 0
           ? `En ${label} aún no existen calificaciones registradas. De ${current.applicable} criterios aplicables, ${current.pending} permanecen pendientes y ${current.review + current.resent} se encuentran en revisión. Por ello, el cumplimiento no debe interpretarse como 0 %, sino como Sin evaluación.`
           : `En ${label} se han evaluado ${current.evaluated} de ${current.applicable} criterios aplicables (${current.advance} % de avance). El cumplimiento evaluado es ${current.compliance ?? 0} %. La media de calificación es ${fmt(stats.mean)} de 4, la mediana es ${fmt(stats.median, 1)} y la desviación estándar es ${fmt(stats.sd)}.`;
-        line(narrative, 9.5);
+        apaParagraph(narrative);
 
         section("Conclusiones");
         callout("Conclusión del informe", [conclusionText(current, components, stats)], "blue");
@@ -1031,8 +1064,8 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.text(interpretationLines, margin + 7, yy);
         yy += interpretationLines.length * 3.7 + 2.5;
         if (observationLines.length) {
-          pdf.setFont("times", "italic");
-          pdf.setFontSize(8.1);
+          pdf.setFont(bodyFont, "italic");
+          pdf.setFontSize(9.5);
           pdf.setTextColor(78, 92, 105);
           pdf.text(observationLines, margin + 7, yy);
           yy += observationLines.length * 3.5 + 2.5;
@@ -1093,11 +1126,11 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         section("Cierre y verificación");
         const evaluatorIds = [...new Set(rows.map((row) => row.score?.evaluated_by_staff_id).filter((value): value is string => Boolean(value)))];
         const evaluators = evaluatorIds.map((id) => staffMap.get(id)).filter((item): item is StaffRow => Boolean(item));
-        if (evaluators.length) line(`Evaluador(es): ${evaluators.slice(0, 4).map((item) => `${item.full_name} (${roleLabel(item.role)})`).join(" · ")}`, 8.7);
-        line(`Generado por: ${generatorStaff?.full_name || (accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "Coordinación académica")}`, 8.7);
-        line(`Fecha de generación: ${formatDate(ecuadorToday())} · Versión ${version}`, 8.6);
-        line(`Estado: ${official ? "INFORME OFICIAL" : "BORRADOR"}`, 8.8, true, official ? colors.approved : colors.correction);
-        line(`Código de verificación: ${code}`, 8.4, true);
+        if (evaluators.length) line(`Evaluador(es): ${evaluators.slice(0, 4).map((item) => `${item.full_name} (${roleLabel(item.role)})`).join(" · ")}`, 10);
+        line(`Generado por: ${generatorStaff?.full_name || (accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "Coordinación académica")}`, 10);
+        line(`Fecha de generación: ${formatDate(ecuadorToday())} · Versión ${version}`, 10);
+        line(`Estado: ${official ? "INFORME OFICIAL" : "BORRADOR"}`, 10, true, official ? colors.approved : colors.correction);
+        line(`Código de verificación: ${code}`, 10, true);
         ensure(35);
         const qr = await remoteImageDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encodeURIComponent(verificationUrl)}`);
         if (qr) {
@@ -1123,7 +1156,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.setPage(page);
         pageHeader(page, pages);
         if (page > 1) {
-          pdf.setFont("helvetica", "normal");
+          pdf.setFont(institutionalFont, "normal");
           pdf.setFontSize(8);
           pdf.setTextColor(92, 103, 114);
           pdf.text(String(page), pageWidth / 2, 291, { align: "center" });
@@ -1161,7 +1194,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
   return <div style={{ position: "fixed", inset: 0, background: "rgba(8,22,38,.58)", zIndex: 10020, display: "grid", placeItems: "center", padding: 18 }}>
     <section style={{ width: "min(940px,96vw)", maxHeight: "92vh", overflow: "auto", background: "white", borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,.24)" }}>
       <header style={{ padding: "20px 22px", background: "#0d2946", color: "white", display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start" }}>
-        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes de acompañamiento</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>Portada institucional, encabezado repetible, análisis, conclusiones y trazabilidad.</p></div>
+        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes de acompañamiento</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>Portada institucional y contenido organizado con criterios de presentación APA 7 para texto, tablas, figuras, notas y anexos.</p></div>
         <button onClick={onClose} aria-label="Cerrar" style={{ border: 0, background: "rgba(255,255,255,.12)", color: "white", borderRadius: 10, padding: 8, cursor: "pointer" }}><X size={18}/></button>
       </header>
       <div style={{ padding: 22 }}>
