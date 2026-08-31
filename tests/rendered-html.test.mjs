@@ -50,11 +50,14 @@ test("el bundle contiene la organización vigente", async () => {
   assert.match(js, /Informe Consolidado/);
 });
 
-test("un docente existente sin expediente puede vincular su carrera desde el portal", async () => {
+test("un docente sin expediente puede crear su proceso desde el portal", async () => {
   const js = await bundledJavascript();
   assert.match(js, /Seleccione su carrera/);
-  assert.match(js, /Vincular carrera/);
-  assert.match(js, /Registro enviado a coordinación/);
+  assert.match(js, /Complete los datos de su proceso/);
+  assert.match(js, /Crear proceso e ingresar/);
+  assert.match(js, /Cambiar carrera/);
+  assert.match(js, /teacher_create_process_from_onboarding/);
+  assert.match(js, /teacher_set_onboarding_career/);
   assert.match(js, /Coordinador responsable/);
 });
 
