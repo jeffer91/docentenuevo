@@ -26,7 +26,7 @@
 /* Flujo de creación del proceso por el docente */
 .onboardingGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
 .onboardingField{display:grid;gap:7px}
-.onboardingField>span{font-size:12px;font-weight:850;color:#4a627a}
+.onboardingField>span{font-size:12px;font-weight:850;color:#4a627a}.onboardingField>small{font-size:10px;color:#74879a}
 .onboardingField input,.onboardingField select{width:100%;border:1px solid #d4dee8;border-radius:11px;padding:11px 12px;background:#fff;color:#173653;font:inherit;outline:none}
 .onboardingField input:focus,.onboardingField select:focus{border-color:#3f78ad;box-shadow:0 0 0 3px rgba(63,120,173,.1)}
 .onboardingActions{display:flex;justify-content:flex-end;margin-top:16px}
