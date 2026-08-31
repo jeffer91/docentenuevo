@@ -26,9 +26,15 @@ type PortalExpedient = {
 
 type PendingOnboardingAssignment = {
   id: string;
+  careerId: string;
   career: string;
   program?: string;
   coordinator: string;
+};
+
+type PeriodOption = {
+  id: string;
+  name: string;
 };
 
 type CareerOption = {
@@ -137,85 +143,102 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
   const [message, setMessage] = useState("");
   const [pendingAssignment, setPendingAssignment] = useState<PendingOnboardingAssignment | null>(null);
   const [careerOptions, setCareerOptions] = useState<CareerOption[]>([]);
+  const [periodOptions, setPeriodOptions] = useState<PeriodOption[]>([]);
   const [selectedCareerId, setSelectedCareerId] = useState("");
+  const [subjectNames, setSubjectNames] = useState("");
+  const [periodId, setPeriodId] = useState("");
+  const [modality, setModality] = useState("Presencial");
+  const [activitiesStartOn, setActivitiesStartOn] = useState("");
   const [linkingCareer, setLinkingCareer] = useState(false);
+  const [creatingProcess, setCreatingProcess] = useState(false);
+  const [changingCareer, setChangingCareer] = useState(false);
 
   const loadOnboarding = useCallback(async (teacherId: string) => {
     const supabase = getSupabaseBrowserClient();
     if (!supabase || !teacherId) return;
 
-    const { data: pendingData, error: pendingError } = await supabase
-      .from("teacher_onboarding_assignments")
-      .select("id, career_id, careers(name, program), siacd_staff(full_name)")
-      .eq("teacher_id", teacherId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!pendingError && pendingData) {
-      const careerRelation = Array.isArray(pendingData.careers) ? pendingData.careers[0] : pendingData.careers;
-      const staffRelation = Array.isArray(pendingData.siacd_staff) ? pendingData.siacd_staff[0] : pendingData.siacd_staff;
-      setPendingAssignment({
-        id: String(pendingData.id),
-        career: String(careerRelation?.name ?? "Carrera"),
-        program: typeof careerRelation?.program === "string" ? careerRelation.program : undefined,
-        coordinator: String(staffRelation?.full_name ?? "Coordinación"),
-      });
-      setCareerOptions([]);
-      setSelectedCareerId("");
-      return;
-    }
-
-    setPendingAssignment(null);
-
-    const [careerResult, staffResult, assignmentResult] = await Promise.all([
+    const [pendingResult, careerResult, staffResult, assignmentResult, periodResult] = await Promise.all([
+      supabase.rpc("teacher_onboarding_state", { p_token: token }),
       supabase.from("careers").select("id, name, program").eq("active", true).order("name"),
       supabase.from("siacd_staff").select("id, full_name").eq("role", "coordinator").eq("active", true),
       supabase.from("siacd_staff_careers").select("staff_id, career_id"),
+      supabase.from("academic_periods").select("id, name").eq("active", true).order("starts_on", { ascending: false }),
     ]);
 
-    const error = careerResult.error ?? staffResult.error ?? assignmentResult.error;
-    if (error) {
-      setMessage("No se pudieron cargar las carreras disponibles.");
-      setCareerOptions([]);
+    if (pendingResult.error) {
+      setMessage("No se pudo consultar la vinculación de su carrera.");
       return;
     }
 
-    const staffMap = new Map(
-      ((staffResult.data ?? []) as Array<Record<string, unknown>>).map((row) => [
-        String(row.id),
-        String(row.full_name ?? "Coordinación"),
-      ]),
-    );
-    const careerMap = new Map(
-      ((careerResult.data ?? []) as Array<Record<string, unknown>>).map((row) => [
-        String(row.id),
-        {
-          id: String(row.id),
-          name: String(row.name ?? ""),
-          program: typeof row.program === "string" ? row.program : undefined,
-        },
-      ]),
-    );
+    const pendingRow = Array.isArray(pendingResult.data)
+      ? pendingResult.data[0] as Record<string, unknown> | undefined
+      : undefined;
 
-    const options: CareerOption[] = [];
-    for (const row of (assignmentResult.data ?? []) as Array<Record<string, unknown>>) {
-      const staffId = String(row.staff_id ?? "");
-      const careerId = String(row.career_id ?? "");
-      const coordinatorName = staffMap.get(staffId);
-      const career = careerMap.get(careerId);
-      if (!career || !coordinatorName) continue;
-      options.push({
-        ...career,
-        coordinatorId: staffId,
-        coordinatorName,
+    if (pendingRow) {
+      setPendingAssignment({
+        id: String(pendingRow.assignment_id ?? ""),
+        careerId: String(pendingRow.career_id ?? ""),
+        career: String(pendingRow.career ?? "Carrera"),
+        program: typeof pendingRow.program === "string" ? pendingRow.program : undefined,
+        coordinator: String(pendingRow.coordinator ?? "Coordinación"),
       });
+      setSelectedCareerId(String(pendingRow.career_id ?? ""));
+    } else {
+      setPendingAssignment(null);
     }
 
-    options.sort((a, b) => a.name.localeCompare(b.name, "es"));
-    setCareerOptions(options);
-  }, []);
+    const catalogError = careerResult.error ?? staffResult.error ?? assignmentResult.error;
+    if (catalogError) {
+      setMessage("No se pudieron cargar las carreras disponibles.");
+      setCareerOptions([]);
+    } else {
+      const staffMap = new Map(
+        ((staffResult.data ?? []) as Array<Record<string, unknown>>).map((row) => [
+          String(row.id),
+          String(row.full_name ?? "Coordinación"),
+        ]),
+      );
+      const careerMap = new Map(
+        ((careerResult.data ?? []) as Array<Record<string, unknown>>).map((row) => [
+          String(row.id),
+          {
+            id: String(row.id),
+            name: String(row.name ?? ""),
+            program: typeof row.program === "string" ? row.program : undefined,
+          },
+        ]),
+      );
+
+      const options: CareerOption[] = [];
+      for (const row of (assignmentResult.data ?? []) as Array<Record<string, unknown>>) {
+        const staffId = String(row.staff_id ?? "");
+        const careerId = String(row.career_id ?? "");
+        const coordinatorName = staffMap.get(staffId);
+        const career = careerMap.get(careerId);
+        if (!career || !coordinatorName) continue;
+        options.push({
+          ...career,
+          coordinatorId: staffId,
+          coordinatorName,
+        });
+      }
+
+      options.sort((a, b) => a.name.localeCompare(b.name, "es"));
+      setCareerOptions(options);
+    }
+
+    if (periodResult.error) {
+      setMessage("No se pudieron cargar los períodos académicos.");
+      setPeriodOptions([]);
+    } else {
+      const periods = ((periodResult.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+        id: String(row.id),
+        name: String(row.name ?? ""),
+      }));
+      setPeriodOptions(periods);
+      setPeriodId((current) => current || periods[0]?.id || "");
+    }
+  }, [token]);
 
   const loadSummary = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -284,37 +307,80 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
   }
 
   async function linkCareer() {
-    if (!session?.teacher_id || !selectedCareerId || linkingCareer) return;
-    const selected = careerOptions.find((career) => career.id === selectedCareerId);
-    if (!selected) return;
+    if (!selectedCareerId || linkingCareer) return;
 
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
 
     setLinkingCareer(true);
     setMessage("");
-    const { error } = await supabase
-      .from("teacher_onboarding_assignments")
-      .insert({
-        teacher_id: session.teacher_id,
-        career_id: selected.id,
-        coordinator_staff_id: selected.coordinatorId,
-        status: "pending",
-      });
+    const { error } = await supabase.rpc("teacher_set_onboarding_career", {
+      p_token: token,
+      p_career_id: selectedCareerId,
+    });
     setLinkingCareer(false);
 
     if (error) {
-      if (/duplicate|unique/i.test(error.message)) {
-        await loadOnboarding(session.teacher_id);
-        setMessage("La carrera ya estaba vinculada a su registro.");
-        return;
-      }
-      setMessage("No se pudo vincular la carrera. Intente nuevamente.");
+      setMessage("No se pudo vincular la carrera. Verifique que tenga un coordinador asignado e intente nuevamente.");
       return;
     }
 
-    await loadOnboarding(session.teacher_id);
-    setMessage("Carrera vinculada correctamente. Su coordinador ya puede completar el expediente.");
+    if (session?.teacher_id) await loadOnboarding(session.teacher_id);
+    setChangingCareer(false);
+    setMessage("Carrera vinculada correctamente. Complete los datos del proceso para ingresar.");
+  }
+
+  async function createProcess() {
+    if (!pendingAssignment || creatingProcess) return;
+    if (subjectNames.trim().length < 2) {
+      setMessage("Ingrese la asignatura o asignaturas del proceso.");
+      return;
+    }
+    if (!periodId) {
+      setMessage("Seleccione el período académico.");
+      return;
+    }
+    if (!activitiesStartOn) {
+      setMessage("Seleccione la fecha de inicio de actividades.");
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    setCreatingProcess(true);
+    setMessage("");
+    const { data, error } = await supabase.rpc("teacher_create_process_from_onboarding", {
+      p_token: token,
+      p_period_id: periodId,
+      p_subject_names: subjectNames.trim(),
+      p_modality: modality,
+      p_activities_start_on: activitiesStartOn,
+    });
+    setCreatingProcess(false);
+
+    if (error) {
+      const detail = error.message ?? "";
+      if (/period_not_available/i.test(detail)) {
+        setMessage("El período seleccionado ya no está disponible.");
+      } else if (/onboarding_not_found/i.test(detail)) {
+        setMessage("No se encontró la carrera pendiente. Vuelva a seleccionarla.");
+      } else if (/career_without_coordinator/i.test(detail)) {
+        setMessage("La carrera ya no tiene un coordinador activo asignado.");
+      } else {
+        setMessage("No se pudo crear el proceso. Revise los datos e intente nuevamente.");
+      }
+      return;
+    }
+
+    const row = Array.isArray(data) ? data[0] as { expedient_id?: string } | undefined : undefined;
+    setPendingAssignment(null);
+    setChangingCareer(false);
+    setSubjectNames("");
+    setActivitiesStartOn("");
+    setMessage("Proceso creado correctamente. Ya puede continuar con su acompañamiento.");
+    await loadSummary();
+    if (row?.expedient_id) setSelectedExpedientId(String(row.expedient_id));
   }
 
   function openPhase(phase: TeacherEvidencePhase) {
@@ -339,7 +405,15 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
 
     {!expedients.length ? <section className={styles.section}>
       {pendingAssignment ? <div>
-        <div className={styles.sectionHead}><div><h2>Registro enviado a coordinación</h2><p>Su carrera ya fue vinculada. El coordinador debe completar los datos administrativos para crear el expediente.</p></div><span className={styles.statusBadge}>Pendiente</span></div>
+        <div className={styles.sectionHead}>
+          <div>
+            <span className={styles.eyebrow}>Paso 2 de 2</span>
+            <h2>Complete los datos de su proceso</h2>
+            <p>Su carrera ya está vinculada. Con estos datos SIACD creará el expediente y podrá ingresar inmediatamente.</p>
+          </div>
+          <span>Listo para crear</span>
+        </div>
+
         <div className={styles.processHero}>
           <div>
             <span className={styles.eyebrow}>Carrera seleccionada</span>
@@ -347,15 +421,67 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
             <p>Coordinador responsable: {pendingAssignment.coordinator}</p>
           </div>
         </div>
+
+        {changingCareer ? <div className={styles.onboardingCareerChange}>
+          <label>Cambiar carrera</label>
+          <div className={styles.processSelector}>
+            <select value={selectedCareerId} onChange={(event) => setSelectedCareerId(event.target.value)}>
+              <option value="">Seleccione una carrera</option>
+              {careerOptions.map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""} · {career.coordinatorName}</option>)}
+            </select>
+            <button className={styles.logout} type="button" disabled={!selectedCareerId || linkingCareer} onClick={() => void linkCareer()}>{linkingCareer ? "Guardando…" : "Guardar carrera"}</button>
+            <button className={styles.logout} type="button" onClick={() => { setChangingCareer(false); setSelectedCareerId(pendingAssignment.careerId); }}>Cancelar</button>
+          </div>
+        </div> : <button className={styles.linkButtonInline} type="button" onClick={() => { setSelectedCareerId(pendingAssignment.careerId); setChangingCareer(true); }}>Cambiar carrera</button>}
+
+        <div className={styles.onboardingGrid}>
+          <label className={styles.onboardingField}>
+            <span>Asignatura(s)</span>
+            <input value={subjectNames} onChange={(event) => setSubjectNames(event.target.value)} placeholder="Ej. Programación I" />
+          </label>
+
+          <label className={styles.onboardingField}>
+            <span>Período académico</span>
+            <select value={periodId} onChange={(event) => setPeriodId(event.target.value)}>
+              <option value="">Seleccione un período</option>
+              {periodOptions.map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}
+            </select>
+          </label>
+
+          <label className={styles.onboardingField}>
+            <span>Modalidad</span>
+            <select value={modality} onChange={(event) => setModality(event.target.value)}>
+              <option>Presencial</option>
+              <option>Híbrida</option>
+              <option>Online</option>
+              <option>Intensiva</option>
+            </select>
+          </label>
+
+          <label className={styles.onboardingField}>
+            <span>Inicio de actividades</span>
+            <input type="date" value={activitiesStartOn} onChange={(event) => setActivitiesStartOn(event.target.value)} />
+          </label>
+        </div>
+
+        <div className={styles.onboardingActions}>
+          <button
+            type="button"
+            disabled={creatingProcess || subjectNames.trim().length < 2 || !periodId || !activitiesStartOn}
+            onClick={() => void createProcess()}
+          >
+            {creatingProcess ? "Creando proceso…" : "Crear proceso e ingresar"}
+          </button>
+        </div>
       </div> : <div>
-        <div className={styles.sectionHead}><div><h2>Seleccione su carrera</h2><p>Antes de iniciar su acompañamiento, indique su carrera principal. SIACD la anexará automáticamente al coordinador responsable.</p></div></div>
+        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Paso 1 de 2</span><h2>Seleccione su carrera</h2><p>SIACD identificará automáticamente al coordinador responsable.</p></div></div>
         {careerOptions.length ? <div className={styles.processSelector}>
           <span>Carrera</span>
           <select value={selectedCareerId} onChange={(event) => setSelectedCareerId(event.target.value)}>
             <option value="">Seleccione una carrera</option>
             {careerOptions.map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""} · {career.coordinatorName}</option>)}
           </select>
-          <button className={styles.logout} type="button" disabled={!selectedCareerId || linkingCareer} onClick={() => void linkCareer()}>{linkingCareer ? "Vinculando…" : "Vincular carrera"}</button>
+          <button className={styles.logout} type="button" disabled={!selectedCareerId || linkingCareer} onClick={() => void linkCareer()}>{linkingCareer ? "Vinculando…" : "Continuar"}</button>
         </div> : <div className={styles.empty}>No existen carreras disponibles con coordinador asignado.</div>}
       </div>}
     </section> : detail && <>
