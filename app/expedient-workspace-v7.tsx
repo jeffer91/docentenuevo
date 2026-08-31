@@ -21,7 +21,7 @@ import styles from "./expedient-workspace-v6.module.css";
 type PhaseKey = "areas" | "before" | "during" | "after";
 type MainTab = "summary" | PhaseKey | "reports" | "history";
 type HitoId = "H1" | "H2" | "H3" | "H4" | "H5" | "H6";
-type ReportKey = "informe_areas" | "informe_antes" | "informe_durante" | "informe_despues" | "informe_consolidado";
+type ReportKey = "informe_induccion" | "informe_final";
 
 type CompetencyDefinition = {
   id: string;
@@ -104,12 +104,9 @@ const sectionOrder: Record<PhaseKey, string[]> = {
   after: ["Cierre"],
 };
 
-const reportDefinitions: Array<{ key: ReportKey; title: string; description: string; phase?: PhaseKey }> = [
-  { key: "informe_areas", title: "Informe de Áreas", description: "Inducciones institucionales realizadas al docente.", phase: "areas" },
-  { key: "informe_antes", title: "Informe Antes", description: "Preparación y verificaciones previas al inicio de clases.", phase: "before" },
-  { key: "informe_durante", title: "Informe Durante", description: "Seguimiento por unidades y observación de clase.", phase: "during" },
-  { key: "informe_despues", title: "Informe Después", description: "Cierre académico, supletorios e informes finales.", phase: "after" },
-  { key: "informe_consolidado", title: "Informe Consolidado", description: "Resumen ejecutivo de todo el acompañamiento." },
+const reportDefinitions: Array<{ key: ReportKey; title: string; description: string }> = [
+  { key: "informe_induccion", title: "Informe de Inducción de los Procesos Académicos a Docente: Nuevos", description: "Integra H1 y H2: inducción institucional y preparación antes de la docencia." },
+  { key: "informe_final", title: "Informe Final de Acompañamiento-Docente: Nuevos", description: "Integra el proceso completo de H1 a H6." },
 ];
 
 function formatDate(value?: string | null) {
@@ -333,13 +330,11 @@ export default function ExpedientWorkspaceV7({ teacher, accessMode, coordinatorN
       let y = 18;
       const margin = 16;
       const width = 178;
-      const isConsolidated = reportKey === "informe_consolidado";
+      const isConsolidated = reportKey === "informe_final";
       const allApproved = (Object.keys(phaseSummaries) as PhaseKey[]).every((phase) => phaseSummaries[phase].resolved === phaseSummaries[phase].total && phaseSummaries[phase].total > 0);
-      const phaseApproved = isConsolidated
-        ? allApproved
-        : definition.phase
-          ? phaseSummaries[definition.phase].total > 0 && phaseSummaries[definition.phase].resolved === phaseSummaries[definition.phase].total
-          : allApproved;
+      const phaseApproved = reportKey === "informe_induccion"
+        ? (["areas", "before"] as PhaseKey[]).every((phase) => phaseSummaries[phase].total > 0 && phaseSummaries[phase].resolved === phaseSummaries[phase].total)
+        : allApproved;
       const draft = !phaseApproved;
       const version = documents.filter((item) => item.document_type === reportKey && item.status !== "void").length + 1;
       const code = verificationCode();
@@ -431,8 +426,9 @@ export default function ExpedientWorkspaceV7({ teacher, accessMode, coordinatorN
         }
       };
 
-      if (definition.phase) {
-        addPhaseDetail(definition.phase);
+      if (reportKey === "informe_induccion") {
+        addPhaseDetail("areas");
+        addPhaseDetail("before");
       } else {
         sectionTitle("Resultado global");
         text(`Cumplimiento global: ${globalSummary.percent}%. Aprobados: ${globalSummary.resolved}/${globalSummary.total} criterios (${globalSummary.progress}%). Evaluados: ${globalSummary.evaluated}/${globalSummary.total}. Brechas críticas: ${globalSummary.criticalGaps}.`, 9);
@@ -470,9 +466,9 @@ export default function ExpedientWorkspaceV7({ teacher, accessMode, coordinatorN
 
       if (draft) {
         sectionTitle("Estado del documento");
-        text(definition.phase
-          ? `BORRADOR: ${phaseLabels[definition.phase].title} todavía tiene criterios pendientes o con calificación menor a 3. El informe será oficial cuando todos los criterios aplicables estén aprobados.`
-          : "BORRADOR: existen criterios pendientes o con calificación menor a 3. El consolidado será oficial cuando todos los criterios aplicables de Áreas, Antes, Durante y Después estén aprobados.", 9, true);
+        text(reportKey === "informe_induccion"
+          ? "BORRADOR: H1 y/o H2 todavía tienen criterios pendientes o con calificación menor a 3. El informe de inducción será oficial cuando todos sus criterios aplicables estén aprobados."
+          : "BORRADOR: existen criterios pendientes o con calificación menor a 3. El informe final será oficial cuando todos los criterios aplicables de Áreas, Antes, Durante y Después estén aprobados.", 9, true);
       }
 
       ensure(12);
@@ -602,7 +598,7 @@ function SummaryView({ teacher, phaseSummaries, globalSummary, onOpen }: {
     </section>
 
     <section className={styles.quickActions}>
-      <button onClick={() => onOpen("reports")}><FileText size={17}/>Generar los 5 informes</button>
+      <button onClick={() => onOpen("reports")}><FileText size={17}/>Generar los 2 informes</button>
       <button onClick={() => onOpen("history")}><History size={17}/>Revisar historial</button>
     </section>
   </div>;
@@ -621,13 +617,13 @@ function ReportsView({ documents, generating, phaseSummaries, onGenerate, onOpen
   return <div className={styles.reportsRoot}>
     <section className={styles.reportsIntro}>
       <div><span>DOCUMENTACIÓN</span><h3>Informes PDF</h3><p>Un informe solo es oficial cuando todos sus criterios aplicables están aprobados con 3/4, 4/4 o No aplica aprobado.</p></div>
-      <div className={allComplete ? styles.ready : styles.draft}><CheckCircle2 size={17}/><span>{allComplete ? "Expediente completo: consolidado oficial habilitado." : "El consolidado se generará como BORRADOR mientras existan pendientes o notas menores a 3."}</span></div>
+      <div className={allComplete ? styles.ready : styles.draft}><CheckCircle2 size={17}/><span>{allComplete ? "Expediente completo: informe final oficial habilitado." : "El informe final se generará como BORRADOR mientras existan pendientes o notas menores a 3."}</span></div>
     </section>
 
     <section className={styles.reportGrid}>
       {reportDefinitions.map((def) => <article className={styles.reportCard} key={def.key}>
         <FileText size={22}/>
-        <div><strong>{def.title}</strong><p>{def.description}</p>{def.phase && <small>{phaseSummaries[def.phase].resolved}/{phaseSummaries[def.phase].total} aprobados · {phaseSummaries[def.phase].percent}% cumplimiento</small>}</div>
+        <div><strong>{def.title}</strong><p>{def.description}</p></div>
         <button disabled={Boolean(generating)} onClick={() => void onGenerate(def.key)}>{generating === def.key ? "Generando…" : "Generar PDF"}</button>
       </article>)}
     </section>
