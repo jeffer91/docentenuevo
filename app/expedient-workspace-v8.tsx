@@ -22,7 +22,7 @@ export default function ExpedientWorkspaceV8(props: Props) {
     const hideLegacyReportEntrances = () => {
       for (const element of Array.from(document.querySelectorAll("button"))) {
         const text = element.textContent?.trim() ?? "";
-        if (text === "Informes" || text === "Generar los 5 informes") {
+        if (text === "Informes" || text === "Generar los 5 informes" || text === "Generar los 2 informes") {
           const html = element as HTMLElement;
           if (html.dataset.siacdFormalHidden === "1") continue;
           html.dataset.siacdFormalHidden = "1";
