@@ -1038,7 +1038,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       };
 
       const drawComponentTable = (reportRows: CriterionRow[]) => {
-        const isConsolidated = definition.key === "informe_consolidado";
+        const isConsolidated = definition.key === "informe_final";
         const data: ComponentSummary[] = isConsolidated
           ? phaseOrder.map((phase) => {
               const phaseRows = reportRows.filter((row) => phaseForHito(row.definition.hito_id) === phase);
