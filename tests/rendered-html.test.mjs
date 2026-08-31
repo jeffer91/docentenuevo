@@ -50,6 +50,15 @@ test("el bundle contiene la organización vigente", async () => {
   assert.match(js, /Informe Consolidado/);
 });
 
+test("el primer registro docente empieza por la carrera y la vincula a coordinación", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Seleccione su carrera/);
+  assert.match(js, /Carrera principal para este acompañamiento/);
+  assert.match(js, /Coordinador responsable/);
+  assert.match(js, /teacher_onboarding_assignments/);
+  assert.match(js, /Preasignados desde el portal docente/);
+});
+
 test("el portal docente incluye el desglose y carga de evidencias", async () => {
   const js = await bundledJavascript();
   assert.match(js, /Criterios de acompañamiento/);
