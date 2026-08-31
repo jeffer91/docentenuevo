@@ -4,6 +4,7 @@ import { Download, FileText, Loader2, TestTube2, TriangleAlert, X } from "lucide
 import { jsPDF } from "jspdf";
 import { useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "./lib/supabase";
+import { REPORT_LOGO_DATA_URL, institutionalDocumentCode, reportHeaderTitle } from "./report-branding";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
 
 type Phase = "areas" | "before" | "during" | "after";
@@ -677,9 +678,12 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         return;
       }
       const version = (documentsResult.data ?? []).filter((item) => item.document_type === definition.key && item.status !== "void").length + 1;
-      const code = `SIACD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-      const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(code)}`;
-      const institutionalLogo = await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
+      const issuedOn = ecuadorToday();
+      const verificationCode = `SIACD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(verificationCode)}`;
+      const documentCode = institutionalDocumentCode(teacher.career, definition.key, issuedOn);
+      const documentTitle = reportHeaderTitle(definition.key, teacher.career, teacher.period, definition.title);
+      const institutionalLogo = REPORT_LOGO_DATA_URL;
       const approverStaff = ((staffResult.data ?? []) as StaffRow[]).filter((item) => item.role === "approver");
       const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "";
 
@@ -715,7 +719,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.rect(rightX, top, rightWidth, height);
 
         if (institutionalLogo) {
-          pdf.addImage(institutionalLogo, "PNG", leftX + 4, top + 5, leftWidth - 8, 14);
+          pdf.addImage(institutionalLogo, "PNG", leftX + 3, top + 4.5, leftWidth - 6, 15);
         } else {
           pdf.setFont(institutionalFont, "bold");
           pdf.setFontSize(9);
@@ -729,26 +733,26 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
 
         pdf.line(centerX, top + 9, centerX + centerWidth, top + 9);
         pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(7.5);
+        pdf.setFontSize(7.6);
         pdf.setTextColor(13, 41, 70);
-        const careerLines = pdf.splitTextToSize(teacher.career || "Carrera no registrada", centerWidth - 6);
-        pdf.text(careerLines.slice(0, 2), centerX + centerWidth / 2, top + 4.6, { align: "center" });
+        pdf.text("Coordinación General de Carreras", centerX + centerWidth / 2, top + 5.4, { align: "center" });
 
-        const headerTitle = pdf.splitTextToSize(definition.title, centerWidth - 6);
+        const headerTitle = pdf.splitTextToSize(documentTitle, centerWidth - 7);
         pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(9);
+        pdf.setFontSize(headerTitle.length >= 4 ? 6.7 : headerTitle.length === 3 ? 7.2 : 8.2);
         pdf.setTextColor(25, 38, 50);
-        pdf.text(headerTitle.slice(0, 3), centerX + centerWidth / 2, top + 15, { align: "center" });
+        const headerTitleTop = top + 14.2;
+        pdf.text(headerTitle.slice(0, 4), centerX + centerWidth / 2, headerTitleTop, { align: "center", lineHeightFactor: 1.1 });
 
         pdf.line(rightX, top + 10, rightX + rightWidth, top + 10);
         pdf.line(rightX, top + 20, rightX + rightWidth, top + 20);
         pdf.setFont(institutionalFont, "bold");
         pdf.setFontSize(6.3);
         pdf.setTextColor(45, 58, 70);
-        pdf.text("VERIFICACIÓN", rightX + 2, top + 3.7);
+        pdf.text("CÓDIGO", rightX + 2, top + 3.7);
         pdf.setFont(institutionalFont, "normal");
         pdf.setFontSize(6.2);
-        const codeLines = pdf.splitTextToSize(code, rightWidth - 4);
+        const codeLines = pdf.splitTextToSize(documentCode, rightWidth - 4);
         pdf.text(codeLines.slice(0, 2), rightX + 2, top + 7);
 
         pdf.setFont(institutionalFont, "bold");
@@ -913,7 +917,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.setTextColor(13, 41, 70);
         pdf.setFont(institutionalFont, "bold");
         pdf.setFontSize(23);
-        const coverTitle = pdf.splitTextToSize(definition.title, 160);
+        const coverTitle = pdf.splitTextToSize(documentTitle, 160);
         const titleTop = 105 - Math.max(0, coverTitle.length - 1) * 5;
         pdf.text(coverTitle, pageWidth / 2, titleTop, { align: "center" });
 
@@ -1253,7 +1257,8 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         line(`Generado por: ${generatorStaff?.full_name || (accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "Coordinación académica")}`, 10);
         line(`Fecha de generación: ${formatDate(ecuadorToday())} · Versión ${version}`, 10);
         line(`Estado: ${official ? "INFORME OFICIAL" : "BORRADOR"}`, 10, true, official ? colors.approved : colors.correction);
-        line(`Código de verificación: ${code}`, 10, true);
+        line(`Código del documento: ${documentCode}`, 10, true);
+        line(`Código de verificación SIACD: ${verificationCode}`, 9);
         ensure(35);
         const qr = await remoteImageDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encodeURIComponent(verificationUrl)}`);
         if (qr) {
@@ -1329,10 +1334,10 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         document_type: definition.key,
         status: "generated",
         storage_path: storagePath,
-        verification_code: code,
+        verification_code: verificationCode,
         generated_by: null,
         generated_by_staff_id: staffId,
-        issued_on: ecuadorToday(),
+        issued_on: issuedOn,
         observation: `${official ? "OFICIAL" : "BORRADOR"} · FORMATO APA 7 · Versión ${version}`,
       });
       if (registerError) {
