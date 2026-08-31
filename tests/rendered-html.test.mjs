@@ -156,6 +156,6 @@ test("los informes usan portada institucional y firmas ancladas", async () => {
   assert.match(js, /DOCUMENTO OFICIAL/);
   assert.match(js, /Datos del documento/);
   assert.match(js, /Acompañamiento docente/);
-  assert.match(js, /VERIFICACIÓN/);
+  assert.match(js, /CÓDIGO/);
   assert.match(js, /criterios de presentación APA 7/);
 });
