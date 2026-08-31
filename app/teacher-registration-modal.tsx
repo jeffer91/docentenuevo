@@ -16,6 +16,15 @@ export type TeacherRegistrationCareer = { id: string; name: string; program?: st
 export type TeacherRegistrationPeriod = { id: string; name: string };
 export type TeacherScheduleRange = { startTime: string; endTime: string };
 
+export type TeacherRegistrationPrefill = {
+  nationalId: string;
+  name: string;
+  email: string;
+  entryDate: string;
+  careerId: string;
+  careerName: string;
+};
+
 export type TeacherRegistrationInput = {
   nationalId: string;
   name: string;
@@ -42,19 +51,22 @@ type SupabaseTeacher = {
   updated_at: string | null;
 };
 
-export default function TeacherRegistrationModal({ careers, periods, coordinatorName, onClose, onSave }: {
+export default function TeacherRegistrationModal({ careers, periods, coordinatorName, initialTeacher, onClose, onSave }: {
   careers: TeacherRegistrationCareer[];
   periods: TeacherRegistrationPeriod[];
   coordinatorName: string;
+  initialTeacher?: TeacherRegistrationPrefill | null;
   onClose: () => void;
   onSave: (input: TeacherRegistrationInput) => Promise<void>;
 }) {
-  const [nationalId, setNationalId] = useState("");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [entryDate, setEntryDate] = useState("");
-  const [careerId, setCareerId] = useState("");
-  const [directoryCareers, setDirectoryCareers] = useState<string[]>([]);
+  const [nationalId, setNationalId] = useState(initialTeacher?.nationalId ?? "");
+  const [name, setName] = useState(initialTeacher?.name ?? "");
+  const [email, setEmail] = useState(initialTeacher?.email ?? "");
+  const [entryDate, setEntryDate] = useState(initialTeacher?.entryDate ?? "");
+  const [careerId, setCareerId] = useState(initialTeacher?.careerId ?? "");
+  const [directoryCareers, setDirectoryCareers] = useState<string[]>(
+    initialTeacher?.careerName ? [initialTeacher.careerName] : [],
+  );
   const [directoryCareerToAdd, setDirectoryCareerToAdd] = useState("");
   const [schedules, setSchedules] = useState<TeacherScheduleRange[]>([{ startTime: "", endTime: "" }]);
   const [lookupState, setLookupState] = useState<"idle" | "loading" | "found" | "new" | "error">("idle");
@@ -178,7 +190,7 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
     <div className="modal-backdrop">
       <div className="modal teacher-directory-modal" role="dialog" aria-modal="true">
         <div className="modal-head">
-          <div><h2>Registrar docente nuevo</h2><p className="subtitle">Coordinador: {coordinatorName}</p></div>
+          <div><h2>{initialTeacher ? "Completar expediente docente" : "Registrar docente nuevo"}</h2><p className="subtitle">Coordinador: {coordinatorName}</p>{initialTeacher && <p className="subtitle">Preasignado por el docente desde su carrera.</p>}</div>
           <button className="icon-button" onClick={onClose} aria-label="Cerrar"><X size={17} /></button>
         </div>
 
@@ -191,6 +203,7 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
                 placeholder="Ej. 0201878634"
                 value={nationalId}
                 onChange={(event) => setNationalId(event.target.value.replace(/\D/g, "").slice(0, 10))}
+                readOnly={Boolean(initialTeacher)}
                 onBlur={() => {
                   const normalized = normalizeCedula(nationalId);
                   if (normalized) setNationalId(normalized);
@@ -206,7 +219,7 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
           </div>
 
           <div className="field full"><label>Nombres y apellidos</label><input value={name} onChange={(event) => setName(event.target.value)} required /></div>
-          <div className="field"><label>Carrera del expediente</label><select value={careerId} onChange={(event) => setCareerId(event.target.value)} required disabled={!careers.length}><option value="">{careers.length ? "Seleccione una carrera" : "No tiene carreras asignadas"}</option>{careers.map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""}</option>)}</select></div>
+          <div className="field"><label>Carrera del expediente</label><select value={careerId} onChange={(event) => setCareerId(event.target.value)} required disabled={!careers.length || Boolean(initialTeacher?.careerId)}><option value="">{careers.length ? "Seleccione una carrera" : "No tiene carreras asignadas"}</option>{careers.map((career) => <option key={career.id} value={career.id}>{career.name}{career.program ? ` — ${career.program}` : ""}</option>)}</select></div>
           <div className="field"><label>Asignatura(s)</label><input name="subject" required /></div>
 
           <div className="field full teacher-directory-careers">
@@ -236,7 +249,7 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
           <div className="field"><label>Código Teams</label><input name="teams" /></div>
           <div className="field full"><label>Enlace Telegram</label><input type="url" name="telegram" /></div>
           {!careers.length && <div className="field full"><div className="error-note">Este coordinador no tiene carreras asignadas. El administrador debe asignarlas antes de registrar docentes.</div></div>}
-          <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={!careers.length || !periods.length || !normalizedId}><Plus size={14} />Guardar expediente</button></div>
+          <div className="form-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" type="submit" disabled={!careers.length || !periods.length || !normalizedId}><Plus size={14} />{initialTeacher ? "Completar expediente" : "Guardar expediente"}</button></div>
         </form>
       </div>
     </div>
