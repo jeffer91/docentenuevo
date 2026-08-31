@@ -21,3 +21,18 @@
 .portal{padding-top:10px}.portalHeader{margin-bottom:7px;min-height:38px}.teacherIdentity{display:flex;align-items:center;gap:12px;min-width:0}.teacherIdentity>.eyebrow{white-space:nowrap}.teacherLine{display:flex;align-items:center;gap:8px;min-width:0}.portalHeader .teacherLine h1{font-size:18px;line-height:1.2;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.teacherRole{font-size:10px;font-weight:850;color:#5f7890;background:#eaf1f7;border-radius:999px;padding:4px 7px;white-space:nowrap}.portalHeader .logout{padding:7px 10px;font-size:11px;border-radius:10px}.processHero{align-items:center;padding:13px 17px;border-radius:14px;margin-bottom:8px;box-shadow:0 8px 22px rgba(11,45,78,.12)}.processHero h2{margin:3px 0 2px;font-size:20px;line-height:1.2}.processHero p{font-size:11px}.processHero .eyebrow{font-size:9px}.statusBadge{padding:6px 9px;font-size:10px}.portalTabs{padding:4px;gap:4px;margin-bottom:9px;border-radius:12px}.portalTabs button{padding:7px 12px;font-size:11px;border-radius:8px}.processSection{padding:13px 14px;border-radius:15px}.processSelector{padding:9px 11px;margin-bottom:9px}.infoBanner{margin-bottom:9px;padding:9px 12px}
 @media(max-width:850px){.portalHeader{align-items:center;flex-direction:row}.teacherIdentity{gap:8px;min-width:0}.teacherIdentity>.eyebrow{display:none}.teacherLine{min-width:0}.portalHeader .teacherLine h1{font-size:16px}.teacherRole{display:none}.processHero{flex-direction:row;align-items:center}.sectionHead{align-items:flex-start;flex-direction:column}}
 @media(max-width:560px){.portal{padding-top:8px}.processHero{padding:11px 12px}.processHero h2{font-size:17px}.processHero .eyebrow{display:none}.statusBadge{font-size:9px;padding:5px 7px}.processSection{padding:10px}.portalHeader .logout{padding:7px}.portalHeader .logout svg{margin:0}.portalHeader .logout{font-size:0}.portalHeader .logout svg{width:16px;height:16px}}
+
+
+/* Flujo de creación del proceso por el docente */
+.onboardingGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.onboardingField{display:grid;gap:7px}
+.onboardingField>span{font-size:12px;font-weight:850;color:#4a627a}
+.onboardingField input,.onboardingField select{width:100%;border:1px solid #d4dee8;border-radius:11px;padding:11px 12px;background:#fff;color:#173653;font:inherit;outline:none}
+.onboardingField input:focus,.onboardingField select:focus{border-color:#3f78ad;box-shadow:0 0 0 3px rgba(63,120,173,.1)}
+.onboardingActions{display:flex;justify-content:flex-end;margin-top:16px}
+.onboardingActions button{border:0;border-radius:12px;padding:12px 18px;background:#0d3a66;color:#fff;font:inherit;font-weight:850;cursor:pointer}
+.onboardingActions button:disabled{opacity:.5;cursor:not-allowed}
+.onboardingCareerChange{margin-top:12px}
+.onboardingCareerChange>label{display:block;margin-bottom:7px;font-size:12px;font-weight:850;color:#4a627a}
+.linkButtonInline{border:0;background:transparent;color:#315f8b;padding:4px 0;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+@media(max-width:700px){.onboardingGrid{grid-template-columns:1fr}.onboardingActions{justify-content:stretch}.onboardingActions button{width:100%}}
