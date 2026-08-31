@@ -62,6 +62,14 @@ try {
 }
 Write-Host "Esquema de preasignacion docente verificado." -ForegroundColor Green
 
+Write-Host "0.6/6 Verificando esquema de documentacion mensual..." -ForegroundColor Cyan
+try {
+    Invoke-RestMethod -Uri "$($env:VITE_SUPABASE_URL)/rest/v1/induction_attendance_registers?select=id&limit=1" -Headers $schemaHeaders -Method Get -TimeoutSec 15 | Out-Null
+} catch {
+    throw "La base de datos aun no tiene disponible induction_attendance_registers. Aplique la migracion 20260831203000_documentation_two_reports_and_monthly_attendance.sql antes de publicar esta version."
+}
+Write-Host "Esquema de documentacion mensual verificado." -ForegroundColor Green
+
 Write-Host "1/6 Instalando dependencias exactas..." -ForegroundColor Cyan
 npm ci --no-audit --no-fund
 if ($LASTEXITCODE -ne 0) { throw "Fallo la instalacion de dependencias." }
