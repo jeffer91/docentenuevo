@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, History, LogOut } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import TeacherCriterionEvidenceWorkspace, { type TeacherEvidencePhase } from "./teacher-criterion-evidence-workspace";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import styles from "./teacher-portal.module.css";
@@ -35,6 +35,8 @@ type PendingOnboardingAssignment = {
 type PeriodOption = {
   id: string;
   name: string;
+  startsOn: string;
+  endsOn: string;
 };
 
 type CareerOption = {
@@ -159,6 +161,11 @@ export default function TeacherProcessPortalV2({
   const [creatingProcess, setCreatingProcess] = useState(false);
   const [changingCareer, setChangingCareer] = useState(false);
 
+  const selectedPeriod = useMemo(
+    () => periodOptions.find((period) => period.id === periodId) ?? null,
+    [periodId, periodOptions],
+  );
+
   const loadOnboarding = useCallback(async (teacherId: string) => {
     const supabase = getSupabaseBrowserClient();
     if (!supabase || !teacherId) return;
@@ -168,7 +175,7 @@ export default function TeacherProcessPortalV2({
       supabase.from("careers").select("id, name, program").eq("active", true).order("name"),
       supabase.from("siacd_staff").select("id, full_name").eq("role", "coordinator").eq("active", true),
       supabase.from("siacd_staff_careers").select("staff_id, career_id"),
-      supabase.from("academic_periods").select("id, name").eq("active", true).order("starts_on", { ascending: false }),
+      supabase.from("academic_periods").select("id, name, starts_on, ends_on").eq("active", true).order("starts_on", { ascending: false }),
     ]);
 
     if (pendingResult.error) {
@@ -240,6 +247,8 @@ export default function TeacherProcessPortalV2({
       const periods = ((periodResult.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
         id: String(row.id),
         name: String(row.name ?? ""),
+        startsOn: String(row.starts_on ?? ""),
+        endsOn: String(row.ends_on ?? ""),
       }));
       setPeriodOptions(periods);
       setPeriodId((current) => current || periods[0]?.id || "");
@@ -352,6 +361,16 @@ export default function TeacherProcessPortalV2({
       setMessage("Seleccione la fecha de inicio de actividades.");
       return;
     }
+    if (
+      selectedPeriod
+      && (
+        activitiesStartOn < selectedPeriod.startsOn
+        || (selectedPeriod.endsOn && activitiesStartOn > selectedPeriod.endsOn)
+      )
+    ) {
+      setMessage(`La fecha de inicio debe estar dentro del período ${selectedPeriod.name} (${selectedPeriod.startsOn} a ${selectedPeriod.endsOn}).`);
+      return;
+    }
 
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
@@ -371,6 +390,12 @@ export default function TeacherProcessPortalV2({
       const detail = error.message ?? "";
       if (/period_not_available/i.test(detail)) {
         setMessage("El período seleccionado ya no está disponible.");
+      } else if (/activity_date_outside_period/i.test(detail)) {
+        setMessage("La fecha de inicio de actividades debe estar dentro del período académico seleccionado.");
+      } else if (/invalid_subject/i.test(detail)) {
+        setMessage("Revise el nombre de la asignatura.");
+      } else if (/invalid_modality/i.test(detail)) {
+        setMessage("La modalidad seleccionada no es válida.");
       } else if (/onboarding_not_found/i.test(detail)) {
         setMessage("No se encontró la carrera pendiente. Vuelva a seleccionarla.");
       } else if (/career_without_coordinator/i.test(detail)) {
@@ -450,7 +475,15 @@ export default function TeacherProcessPortalV2({
 
           <label className={styles.onboardingField}>
             <span>Período académico</span>
-            <select value={periodId} onChange={(event) => setPeriodId(event.target.value)}>
+            <select value={periodId} onChange={(event) => {
+              const nextId = event.target.value;
+              const nextPeriod = periodOptions.find((period) => period.id === nextId);
+              setPeriodId(nextId);
+              if (activitiesStartOn && nextPeriod && (
+                activitiesStartOn < nextPeriod.startsOn
+                || (nextPeriod.endsOn && activitiesStartOn > nextPeriod.endsOn)
+              )) setActivitiesStartOn("");
+            }}>
               <option value="">Seleccione un período</option>
               {periodOptions.map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}
             </select>
@@ -468,7 +501,14 @@ export default function TeacherProcessPortalV2({
 
           <label className={styles.onboardingField}>
             <span>Inicio de actividades</span>
-            <input type="date" value={activitiesStartOn} onChange={(event) => setActivitiesStartOn(event.target.value)} />
+            <input
+              type="date"
+              min={selectedPeriod?.startsOn || undefined}
+              max={selectedPeriod?.endsOn || undefined}
+              value={activitiesStartOn}
+              onChange={(event) => setActivitiesStartOn(event.target.value)}
+            />
+            {selectedPeriod && <small>Dentro del período: {selectedPeriod.startsOn} a {selectedPeriod.endsOn}</small>}
           </label>
         </div>
 
