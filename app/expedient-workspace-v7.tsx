@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
+import { jsPDF } from "jspdf";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -328,7 +329,6 @@ export default function ExpedientWorkspaceV7({ teacher, accessMode, coordinatorN
     setGenerating(reportKey);
 
     try {
-      const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       let y = 18;
       const margin = 16;
