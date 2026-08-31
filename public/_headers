@@ -1,0 +1,20 @@
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/docente/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/coordinador/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/administrador/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/verificar/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
