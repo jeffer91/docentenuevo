@@ -173,12 +173,18 @@ test("el coordinador puede generar y versionar el registro mensual de asistencia
   assert.match(source, /Cada nueva generación crea una versión/);
 });
 
-test("los informes usan portada institucional y firmas ancladas", async () => {
+test("los informes usan portada institucional, tipografía solicitada y cuadro de firmas", async () => {
   const js = await bundledJavascript();
-  assert.match(js, /Coordinador\(a\) General de Carreras/);
-  assert.match(js, /DOCUMENTO OFICIAL/);
-  assert.match(js, /Datos del documento/);
+  const formal = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
+  assert.match(js, /ELABORADO POR:/);
+  assert.match(js, /REVISADO POR:/);
+  assert.match(js, /APROBADO POR:/);
+  assert.match(js, /Ing\. Martha Tomalá/);
+  assert.match(js, /Coordinadora General de Carreras/);
   assert.match(js, /Acompañamiento docente/);
   assert.match(js, /CÓDIGO/);
-  assert.match(js, /Informe de Inducción de los Procesos Académicos a Docente: Nuevos/);
+  assert.match(formal, /setFontSize\(23\)/);
+  assert.match(formal, /setFontSize\(9\)/);
+  assert.doesNotMatch(formal, /coverSubtitle/);
+  assert.doesNotMatch(formal, /BORRADOR/);
 });
