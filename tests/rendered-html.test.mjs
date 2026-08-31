@@ -70,6 +70,23 @@ test("el primer registro docente empieza por la carrera y la vincula a coordinac
   assert.match(js, /Preasignados desde el portal docente/);
 });
 
+test("los criterios CHECK permiten confirmación docente sin autoaprobar", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Sí, ya lo conozco/);
+  assert.match(js, /Confirmado por usted/);
+  assert.match(js, /Coordinación todavía debe verificarlo/);
+  assert.match(js, /teacher_acknowledge_check/);
+  assert.match(js, /El docente confirmó este criterio/);
+});
+
+test("la creación del proceso valida la fecha contra el período académico", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /starts_on/);
+  assert.match(js, /ends_on/);
+  assert.match(js, /Dentro del período/);
+  assert.match(js, /activity_date_outside_period/);
+});
+
 test("el portal docente incluye el desglose y carga de evidencias", async () => {
   const js = await bundledJavascript();
   assert.match(js, /Criterios de acompañamiento/);
