@@ -8,7 +8,7 @@ import { REPORT_LOGO_DATA_URL, institutionalDocumentCode, reportHeaderTitle } fr
 import type { AccessMode, Teacher } from "./siacd-app-v3";
 
 type Phase = "areas" | "before" | "during" | "after";
-type ReportKey = "informe_areas" | "informe_antes" | "informe_durante" | "informe_despues" | "informe_consolidado";
+type ReportKey = "informe_induccion" | "informe_final";
 type StateKey = "pending" | "review" | "resent" | "correction" | "approved" | "na";
 
 type Definition = {
@@ -102,11 +102,16 @@ type DescriptiveStats = {
 type ComponentSummary = Summary & { name: string; stats: DescriptiveStats };
 
 const reports: ReportDefinition[] = [
-  { key: "informe_areas", title: "Informe de Áreas", subtitle: "Inducción institucional y condiciones de incorporación docente.", phase: "areas" },
-  { key: "informe_antes", title: "Informe Antes", subtitle: "Preparación académica y tecnológica previa al inicio de la docencia.", phase: "before" },
-  { key: "informe_durante", title: "Informe Durante", subtitle: "Seguimiento de la ejecución académica y acompañamiento durante el período.", phase: "during" },
-  { key: "informe_despues", title: "Informe Después", subtitle: "Cierre académico y verificación final del proceso docente.", phase: "after" },
-  { key: "informe_consolidado", title: "Informe Consolidado", subtitle: "Resultado integral del acompañamiento docente." },
+  {
+    key: "informe_induccion",
+    title: "Informe de Inducción de los Procesos Académicos a Docente: Nuevos",
+    subtitle: "Integra H1 · Inducción por áreas y H2 · Preparación antes de la docencia.",
+  },
+  {
+    key: "informe_final",
+    title: "Informe Final de Acompañamiento-Docente: Nuevos",
+    subtitle: "Integra el acompañamiento completo desde H1 hasta H6.",
+  },
 ];
 
 const phaseLabels: Record<Phase, string> = { areas: "Áreas", before: "Antes", during: "Durante", after: "Después" };
@@ -317,7 +322,7 @@ function generationWarnings(
     }
   }
 
-  if (definition.key === "informe_consolidado" && !reviewCycles.some((cycle) => cycle.status === "closed")) {
+  if (definition.key === "informe_final" && !reviewCycles.some((cycle) => cycle.status === "closed")) {
     reasons.push("Todavía no existen ciclos de revisión cerrados para mostrar evolución histórica.");
   }
 
@@ -664,7 +669,9 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const staffMap = new Map<string, StaffRow>(((staffResult.data ?? []) as StaffRow[]).map((item) => [item.id, item]));
       const reviewCycles = ((reviewResult.data as ReviewWorkspace | null)?.cycles ?? []) as ReviewCycle[];
       const generatorStaff = staffMap.get(staffId) ?? null;
-      const scope = definition.phase ? definitions.filter((item) => phaseForHito(item.hito_id) === definition.phase) : definitions;
+      const scope = definition.key === "informe_induccion"
+        ? definitions.filter((item) => item.hito_id === "H1" || item.hito_id === "H2")
+        : definitions;
       const rows: CriterionRow[] = scope.map((item) => {
         const score = scores.get(item.id) ?? null;
         const criterionWorkspace = evidenceMap.get(item.id) ?? null;
@@ -682,7 +689,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const verificationCode = `SIACD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(verificationCode)}`;
       const documentCode = institutionalDocumentCode(teacher.career, definition.key, issuedOn);
-      const documentTitle = reportHeaderTitle(definition.key, teacher.career, teacher.period, definition.title);
+      const documentTitle = reportHeaderTitle(definition.key, teacher.career, teacher.period);
       const institutionalLogo = REPORT_LOGO_DATA_URL;
       const approverStaff = ((staffResult.data ?? []) as StaffRow[]).filter((item) => item.role === "approver");
       const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "";
@@ -1112,9 +1119,9 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
           62,
           "Las barras representan la frecuencia de calificaciones de 0/4 a 4/4. Los criterios No aplica y aquellos sin evaluación no forman parte de esta distribución.",
         );
-        const comparison = definition.key === "informe_consolidado" ? phaseBarChart(reportRows) : componentBarChart(components);
+        const comparison = definition.key === "informe_final" ? phaseBarChart(reportRows) : componentBarChart(components);
         apaFigure(
-          definition.key === "informe_consolidado" ? "Cumplimiento evaluado por etapa" : (definition.phase === "during" ? "Cumplimiento evaluado por bloque" : "Cumplimiento evaluado por componente"),
+          definition.key === "informe_final" ? "Cumplimiento evaluado por etapa" : "Cumplimiento evaluado por componente",
           comparison,
           68,
           "El cumplimiento corresponde a la proporción de criterios aprobados entre los criterios efectivamente evaluados. Cuando no existen evaluaciones, se muestra Sin evaluación.",
@@ -1285,9 +1292,18 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
           "amber",
         );
       }
-      drawExecutive(rows, definition.phase ? `la etapa ${phaseLabels[definition.phase]}` : "el acompañamiento consolidado");
-      if (definition.key === "informe_consolidado") drawHistory();
-      drawDetails(rows, definition.key === "informe_consolidado");
+      if (definition.key === "informe_induccion") {
+        section("Alcance de la inducción", "El informe integra la inducción institucional por áreas (H1) y la preparación académica y tecnológica previa al inicio de la docencia (H2).");
+        apaParagraph("La inducción comprende los procesos institucionales y académicos registrados en SIACD para Talento, Software, Calidad, Bienestar Estudiantil, Coordinación, Teams, PEA, Adaptaciones, EVA y SISACAD. El resultado se presenta con base en la información disponible al momento de generar el documento.");
+        drawExecutive(rows, "la inducción y preparación inicial del docente");
+        drawDetails(rows, false);
+      } else {
+        section("Alcance del acompañamiento", "El informe final integra las etapas Áreas, Antes, Durante y Después, correspondientes a los hitos H1 a H6 del expediente.");
+        apaParagraph("El acompañamiento final consolida la inducción inicial, la preparación previa, el seguimiento académico por unidades, la observación de clase, las evidencias, las revisiones y el cierre del período. Los resultados se interpretan mediante avance de evaluación, cumplimiento evaluado, brechas y trazabilidad documental.");
+        drawExecutive(rows, "el acompañamiento integral del docente");
+        drawHistory();
+        drawDetails(rows, true);
+      }
       if (isDemo) {
         newPage();
         section("Anexo de evidencias demostrativas", "Imágenes ficticias incorporadas exclusivamente para validar la presentación del documento.");
@@ -1357,7 +1373,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
   return <div style={{ position: "fixed", inset: 0, background: "rgba(8,22,38,.58)", zIndex: 10020, display: "grid", placeItems: "center", padding: 18 }}>
     <section style={{ width: "min(940px,96vw)", maxHeight: "92vh", overflow: "auto", background: "white", borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,.24)" }}>
       <header style={{ padding: "20px 22px", background: "#0d2946", color: "white", display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start" }}>
-        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes de acompañamiento</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>Portada institucional y contenido organizado con criterios de presentación APA 7 para texto, tablas, figuras, notas y anexos.</p></div>
+        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes del docente</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>SIACD genera únicamente el Informe de Inducción y el Informe Final. Ambos pueden emitirse como borrador cuando existan datos pendientes.</p></div>
         <button onClick={onClose} aria-label="Cerrar" style={{ border: 0, background: "rgba(255,255,255,.12)", color: "white", borderRadius: 10, padding: 8, cursor: "pointer" }}><X size={18}/></button>
       </header>
       <div style={{ padding: 22 }}>
