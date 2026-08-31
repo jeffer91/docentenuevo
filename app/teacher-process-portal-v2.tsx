@@ -132,7 +132,13 @@ function actorLabel(value: ActivityItem["actor_type"]) {
   return "SIACD";
 }
 
-export default function TeacherProcessPortalV2({ token }: { token: string }) {
+export default function TeacherProcessPortalV2({
+  token,
+  onProcessAvailabilityChange,
+}: {
+  token: string;
+  onProcessAvailabilityChange?: (available: boolean) => void;
+}) {
   const [session, setSession] = useState<TeacherSession | null>(null);
   const [expedients, setExpedients] = useState<PortalExpedient[]>([]);
   const [selectedExpedientId, setSelectedExpedientId] = useState("");
@@ -253,6 +259,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
       : undefined;
     if (!sessionRow) {
       window.localStorage.removeItem(DEVICE_TOKEN_KEY);
+      onProcessAvailabilityChange?.(false);
       setLoading(false);
       return;
     }
@@ -264,6 +271,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
     }
     const rows = (summaryResult.data ?? []) as PortalExpedient[];
     setExpedients(rows);
+    onProcessAvailabilityChange?.(rows.length > 0);
     setSelectedExpedientId((current) => current && rows.some((item) => item.expedient_id === current) ? current : rows[0]?.expedient_id ?? "");
     if (!rows.length) {
       await loadOnboarding(sessionRow.teacher_id);
@@ -273,7 +281,7 @@ export default function TeacherProcessPortalV2({ token }: { token: string }) {
       setSelectedCareerId("");
     }
     setLoading(false);
-  }, [loadOnboarding, token]);
+  }, [loadOnboarding, onProcessAvailabilityChange, token]);
 
   const loadDetail = useCallback(async (expedientId: string, resetTab = false) => {
     const supabase = getSupabaseBrowserClient();
