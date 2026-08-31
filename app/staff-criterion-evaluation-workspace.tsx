@@ -69,6 +69,10 @@ type Score = {
   evaluated_at: string | null;
 };
 
+type TeacherAcknowledgement = {
+  acknowledged_at: string;
+};
+
 type Criterion = {
   id: string;
   hito_id: string;
@@ -77,6 +81,7 @@ type Criterion = {
   mode: CriterionMode;
   criticality: string;
   expected_evidence: string | null;
+  teacher_acknowledgement: TeacherAcknowledgement | null;
   score: Score | null;
   na_request: NaRequest | null;
   request: EvidenceRequest | null;
@@ -157,7 +162,11 @@ function criterionState(criterion: Criterion) {
   if (criterion.mode === "evidence" && ["submitted", "in_review"].includes(criterion.request?.status ?? "")) {
     return { key: "submitted", label: "Por revisar" } as const;
   }
-  if (criterion.mode === "check") return { key: "pending", label: "Por verificar" } as const;
+  if (criterion.mode === "check") {
+    return criterion.teacher_acknowledgement
+      ? { key: "pending", label: "Docente confirmó" } as const
+      : { key: "pending", label: "Por verificar" } as const;
+  }
   return { key: "pending", label: "Sin evidencia" } as const;
 }
 
@@ -363,7 +372,7 @@ export default function StaffCriterionEvaluationWorkspace({
 
   return <div className={styles.root}>
     <section className={styles.topline}>
-      <div><h3>{phaseLabels[phase]}</h3><p>Verifique directamente los criterios CHECK y revise archivos o enlaces únicamente en los criterios EVIDENCIA.</p></div>
+      <div><h3>{phaseLabels[phase]}</h3><p>Verifique directamente los criterios CHECK. Cuando el docente confirma que ya conoce o cumple uno, esa confirmación aparece aquí sin sustituir su evaluación.</p></div>
       <button onClick={() => void load()}><RefreshCw size={15}/>Actualizar</button>
     </section>
 
@@ -417,7 +426,12 @@ export default function StaffCriterionEvaluationWorkspace({
 
               {criterion.mode === "check" ? <div className={styles.noEvidence}>
                 <CheckCircle2 size={17}/>
-                <div><strong>Verificación directa</strong><p>Este criterio no requiere que el docente cargue archivos. Revíselo en el sistema, aula, sesión o fuente institucional correspondiente.</p>{criterion.score?.observation && <p><b>Última observación:</b> {criterion.score.observation}</p>}</div>
+                <div><strong>Verificación directa</strong><p>Este criterio no requiere archivos. Revíselo en el sistema, aula, sesión o fuente institucional correspondiente.</p>
+                  {criterion.teacher_acknowledgement
+                    ? <div className={styles.teacherAck}><CheckCircle2 size={15}/><span>El docente confirmó este criterio el {formatDate(criterion.teacher_acknowledgement.acknowledged_at)}.</span></div>
+                    : <div className={styles.teacherAckPending}><Clock3 size={15}/><span>El docente todavía no ha confirmado que conoce o cumple este criterio.</span></div>}
+                  {criterion.score?.observation && <p><b>Última observación:</b> {criterion.score.observation}</p>}
+                </div>
               </div> : latest ? <section className={styles.submission}>
                 <header><div><strong>Entrega · v{latest.version}</strong><span>{formatDate(latest.submitted_at)}{latest.reviewed_at ? ` · revisada ${formatDate(latest.reviewed_at)}` : ""}</span></div><span className={styles.submissionState}>{latest.status === "approved" ? "Aprobada" : latest.status === "correction_required" ? "Corrección" : latest.status === "superseded" ? "Histórica" : "Por revisar"}</span></header>
                 {latest.teacher_comment && <div className={styles.teacherComment}><strong>Comentario</strong><p>{latest.teacher_comment}</p></div>}
