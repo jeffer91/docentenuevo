@@ -94,7 +94,7 @@ test("el portal docente incluye el desglose y carga de evidencias", async () => 
   assert.match(js, /Pegue aquí su captura/);
   assert.match(js, /Ctrl\+V/);
   assert.match(js, /máximo 3 evidencias/i);
-  assert.match(js, /Informes de acompañamiento/);
+  assert.match(js, /Documentación del docente/);
 });
 
 test("los informes siempre permiten generar borradores y jsPDF no se carga al hacer clic", async () => {
