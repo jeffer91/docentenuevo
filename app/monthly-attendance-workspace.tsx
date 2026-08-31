@@ -39,6 +39,22 @@ function safeName(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-");
 }
 
+async function remoteImageDataUrl(url: string) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return "";
+    const blob = await response.blob();
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return "";
+  }
+}
+
 function careerLabel(career?: CatalogOption | null) {
   if (!career) return "";
   return career.program ? `${career.name} — ${career.program}` : career.name;
@@ -165,6 +181,7 @@ export default function MonthlyAttendanceWorkspace({
       const label = careerLabel(selectedCareer);
       const institutionalCode = attendanceDocumentCode(label, year, monthNumber);
       const verificationCode = `SIACD-${year}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const institutionalLogo = REPORT_LOGO_DATA_URL || await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
 
       const rowsPerPage = 25;
@@ -187,7 +204,14 @@ export default function MonthlyAttendanceWorkspace({
         pdf.line(left + logoWidth, top, left + logoWidth, top + headerHeight);
         pdf.line(left + logoWidth + centerWidth, top, left + logoWidth + centerWidth, top + headerHeight);
 
-        pdf.addImage(REPORT_LOGO_DATA_URL, "PNG", left + 2, top + 2, logoWidth - 4, 13.5);
+        if (institutionalLogo) {
+          pdf.addImage(institutionalLogo, "PNG", left + 2, top + 2, logoWidth - 4, 13.5);
+        } else {
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(9);
+          pdf.setTextColor(20, 50, 80);
+          pdf.text("ITSQMET", left + logoWidth / 2, top + 10, { align: "center" });
+        }
 
         pdf.setFont("helvetica", "bold");
         pdf.setTextColor(0, 0, 0);
