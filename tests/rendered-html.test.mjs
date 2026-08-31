@@ -50,6 +50,14 @@ test("el bundle contiene la organización vigente", async () => {
   assert.match(js, /Informe Consolidado/);
 });
 
+test("un docente existente sin expediente puede vincular su carrera desde el portal", async () => {
+  const js = await bundledJavascript();
+  assert.match(js, /Seleccione su carrera/);
+  assert.match(js, /Vincular carrera/);
+  assert.match(js, /Registro enviado a coordinación/);
+  assert.match(js, /Coordinador responsable/);
+});
+
 test("el primer registro docente empieza por la carrera y la vincula a coordinación", async () => {
   const js = await bundledJavascript();
   assert.match(js, /Seleccione su carrera/);
