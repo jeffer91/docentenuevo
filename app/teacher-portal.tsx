@@ -14,13 +14,17 @@ export default function TeacherPortal() {
   const [ready, setReady] = useState(false);
   const [token, setToken] = useState("");
   const [showIndicators, setShowIndicators] = useState(false);
+  const [hasProcess, setHasProcess] = useState(false);
 
   useEffect(() => {
     function syncToken() {
       const current = window.localStorage.getItem(DEVICE_TOKEN_KEY) ?? "";
       setToken((previous) => previous === current ? previous : current);
       setReady(true);
-      if (!current) setShowIndicators(false);
+      if (!current) {
+        setShowIndicators(false);
+        setHasProcess(false);
+      }
     }
     syncToken();
     const timer = window.setInterval(syncToken, 700);
@@ -32,8 +36,8 @@ export default function TeacherPortal() {
 
   return <>
     <TeacherProcessAutoOpen />
-    <TeacherProcessPortal token={token} />
-    <button className={styles.indicatorButton} onClick={() => setShowIndicators(true)}><BarChart3 size={17}/>Mis indicadores</button>
-    {showIndicators && <TeacherIndicators token={token} onClose={() => setShowIndicators(false)} />}
+    <TeacherProcessPortal token={token} onProcessAvailabilityChange={setHasProcess} />
+    {hasProcess && <button className={styles.indicatorButton} onClick={() => setShowIndicators(true)}><BarChart3 size={17}/>Mis indicadores</button>}
+    {hasProcess && showIndicators && <TeacherIndicators token={token} onClose={() => setShowIndicators(false)} />}
   </>;
 }
