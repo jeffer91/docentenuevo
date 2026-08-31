@@ -692,7 +692,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const documentTitle = reportHeaderTitle(definition.key, teacher.career, teacher.period);
       const institutionalLogo = REPORT_LOGO_DATA_URL || await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
       const approverStaff = ((staffResult.data ?? []) as StaffRow[]).filter((item) => item.role === "approver");
-      const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "";
+      const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "Ing. Martha Tomalá";
 
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const pageWidth = 210;
@@ -709,9 +709,9 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
 
       const pageHeader = (pageNumber?: number, totalPages?: number) => {
         const top = 10;
-        const height = 30;
+        const height = 34;
         const leftWidth = 46;
-        const rightWidth = 38;
+        const rightWidth = 40;
         const centerWidth = headerWidth - leftWidth - rightWidth;
         const leftX = headerMargin;
         const centerX = leftX + leftWidth;
@@ -726,54 +726,58 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.rect(rightX, top, rightWidth, height);
 
         if (institutionalLogo) {
-          pdf.addImage(institutionalLogo, "PNG", leftX + 3, top + 4.5, leftWidth - 6, 15);
+          pdf.addImage(institutionalLogo, "PNG", leftX + 2.5, top + 3, leftWidth - 5, 15.5);
         } else {
           pdf.setFont(institutionalFont, "bold");
           pdf.setFontSize(9);
           pdf.setTextColor(13, 41, 70);
           pdf.text("ITSQMET", leftX + leftWidth / 2, top + 12, { align: "center" });
         }
-        pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(7.4);
-        pdf.setTextColor(45, 58, 70);
-        pdf.text("Acompañamiento docente", leftX + leftWidth / 2, top + 25, { align: "center" });
 
-        pdf.line(centerX, top + 9, centerX + centerWidth, top + 9);
+        pdf.setFont(institutionalFont, "normal");
+        pdf.setFontSize(9);
+        pdf.setTextColor(45, 58, 70);
+        pdf.text("Acompañamiento docente", leftX + leftWidth / 2, top + 27, { align: "center" });
+
+        pdf.line(centerX, top + 10, centerX + centerWidth, top + 10);
         pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(7.6);
+        pdf.setFontSize(9);
         pdf.setTextColor(13, 41, 70);
-        pdf.text("Coordinación General de Carreras", centerX + centerWidth / 2, top + 5.4, { align: "center" });
+        pdf.text("Coordinación General de Carreras", centerX + centerWidth / 2, top + 6.5, { align: "center" });
 
-        const headerTitle = pdf.splitTextToSize(documentTitle, centerWidth - 7);
         pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(headerTitle.length >= 4 ? 6.7 : headerTitle.length === 3 ? 7.2 : 8.2);
+        pdf.setFontSize(9);
         pdf.setTextColor(25, 38, 50);
-        const headerTitleTop = top + 14.2;
-        pdf.text(headerTitle.slice(0, 4), centerX + centerWidth / 2, headerTitleTop, { align: "center", lineHeightFactor: 1.1 });
+        const headerTitle = pdf.splitTextToSize(documentTitle, centerWidth - 6);
+        const shownHeaderTitle = headerTitle.slice(0, 4);
+        const headerLineHeight = 3.6;
+        const headerTitleTop = top + 17.5 - ((shownHeaderTitle.length - 1) * headerLineHeight) / 2;
+        pdf.text(shownHeaderTitle, centerX + centerWidth / 2, headerTitleTop, { align: "center", lineHeightFactor: 1.15 });
 
-        pdf.line(rightX, top + 10, rightX + rightWidth, top + 10);
-        pdf.line(rightX, top + 20, rightX + rightWidth, top + 20);
+        pdf.line(rightX, top + 14, rightX + rightWidth, top + 14);
+        pdf.line(rightX, top + 24, rightX + rightWidth, top + 24);
         pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(6.3);
+        pdf.setFontSize(9);
         pdf.setTextColor(45, 58, 70);
-        pdf.text("CÓDIGO", rightX + 2, top + 3.7);
+        pdf.text("CÓDIGO", rightX + rightWidth / 2, top + 4.5, { align: "center" });
+
         pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(6.2);
-        const codeLines = pdf.splitTextToSize(documentCode, rightWidth - 4);
-        pdf.text(codeLines.slice(0, 2), rightX + 2, top + 7);
+        pdf.setFontSize(9);
+        const codeLines = pdf.splitTextToSize(documentCode, rightWidth - 4).slice(0, 3);
+        pdf.text(codeLines, rightX + rightWidth / 2, top + 8.2, { align: "center", lineHeightFactor: 1.05 });
 
         pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(6.5);
-        pdf.text("Versión:", rightX + 2, top + 14);
+        pdf.setFontSize(9);
+        pdf.text("Versión:", rightX + 8, top + 20, { align: "center" });
         pdf.setFont(institutionalFont, "normal");
-        pdf.text(String(version), rightX + 16, top + 14);
+        pdf.text(String(version), rightX + 27, top + 20, { align: "center" });
 
         pdf.setFont(institutionalFont, "bold");
-        pdf.text("Página:", rightX + 2, top + 24);
+        pdf.text("Página:", rightX + 8, top + 30, { align: "center" });
         pdf.setFont(institutionalFont, "normal");
-        pdf.text(pageNumber && totalPages ? `${pageNumber} de ${totalPages}` : "—", rightX + 16, top + 24);
+        pdf.text(pageNumber && totalPages ? `${pageNumber} de ${totalPages}` : "—", rightX + 27, top + 30, { align: "center" });
 
-        y = 49;
+        y = 53;
       };
       const newPage = () => { pdf.addPage(); pageHeader(); };
       const ensure = (height = 16) => { if (y + height > pageHeight - 20) newPage(); };
@@ -925,46 +929,39 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.setFont(institutionalFont, "bold");
         pdf.setFontSize(23);
         const coverTitle = pdf.splitTextToSize(documentTitle, 160);
-        const titleTop = 105 - Math.max(0, coverTitle.length - 1) * 5;
-        pdf.text(coverTitle, pageWidth / 2, titleTop, { align: "center" });
+        const titleTop = 108 - Math.max(0, coverTitle.length - 1) * 5;
+        pdf.text(coverTitle, pageWidth / 2, titleTop, { align: "center", lineHeightFactor: 1.05 });
 
-        pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(10);
-        pdf.setTextColor(82, 98, 113);
-        const coverSubtitle = pdf.splitTextToSize(definition.subtitle, 145);
-        pdf.text(coverSubtitle, pageWidth / 2, titleTop + coverTitle.length * 9 + 5, { align: "center" });
-
-        pdf.setFillColor(official ? 229 : 255, official ? 246 : 243, official ? 235 : 215);
-        pdf.setTextColor(official ? 34 : 141, official ? 104 : 88, official ? 64 : 18);
-        pdf.roundedRect(82, 146, 46, 10, 2, 2, "F");
-        pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(8);
-        pdf.text(official ? "DOCUMENTO OFICIAL" : "BORRADOR", pageWidth / 2, 152.5, { align: "center" });
-
-        const signatureTop = 232;
-        const signatureHeight = 43;
+        const signatureTop = 218;
+        const signatureHeight = 58;
         const signatureWidth = headerWidth / 3;
-        const signatureRoles = [
-          { role: "Docente", name: teacher.name },
-          { role: "Coordinador(a) de Carrera", name: coordinatorName || "—" },
-          { role: "Coordinador(a) General de Carreras", name: generalCoordinatorName || "—" },
+        const signatureColumns = [
+          { heading: "ELABORADO POR:", name: teacher.name, role: "Docente" },
+          { heading: "REVISADO POR:", name: coordinatorName || "—", role: "Coordinador(a) de Carrera" },
+          { heading: "APROBADO POR:", name: generalCoordinatorName || "Ing. Martha Tomalá", role: "Coordinadora General de Carreras" },
         ];
 
-        pdf.setDrawColor(110, 122, 133);
-        pdf.setLineWidth(0.25);
-        signatureRoles.forEach((item, index) => {
+        pdf.setDrawColor(35, 35, 35);
+        pdf.setLineWidth(0.3);
+        signatureColumns.forEach((item, index) => {
           const x = headerMargin + index * signatureWidth;
           pdf.rect(x, signatureTop, signatureWidth, signatureHeight);
-          pdf.line(x + 8, signatureTop + 21, x + signatureWidth - 8, signatureTop + 21);
-          pdf.setFont(institutionalFont, "normal");
-          pdf.setFontSize(9);
-          pdf.setTextColor(28, 42, 55);
-          const nameLines = pdf.splitTextToSize(item.name, signatureWidth - 8);
-          pdf.text(nameLines, x + signatureWidth / 2, signatureTop + 27, { align: "center" });
+          pdf.line(x, signatureTop + 36, x + signatureWidth, signatureTop + 36);
+          pdf.line(x, signatureTop + 45, x + signatureWidth, signatureTop + 45);
+
           pdf.setFont(institutionalFont, "bold");
           pdf.setFontSize(9);
-          const roleLines = pdf.splitTextToSize(item.role, signatureWidth - 6);
-          pdf.text(roleLines, x + signatureWidth / 2, signatureTop + 36, { align: "center" });
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(item.heading, x + signatureWidth / 2, signatureTop + 6, { align: "center" });
+
+          pdf.setFont(institutionalFont, "normal");
+          pdf.setFontSize(9);
+          const nameLines = pdf.splitTextToSize(`Nombre: ${item.name}`, signatureWidth - 4);
+          pdf.text(nameLines.slice(0, 2), x + signatureWidth / 2, signatureTop + 41, { align: "center", lineHeightFactor: 1.05 });
+
+          const roleLines = pdf.splitTextToSize(`Cargo: ${item.role}`, signatureWidth - 4);
+          const roleTop = signatureTop + 50;
+          pdf.text(roleLines.slice(0, 2), x + signatureWidth / 2, roleTop, { align: "center", lineHeightFactor: 1.05 });
         });
 
         newPage();
@@ -1263,7 +1260,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         if (evaluators.length) line(`Evaluador(es): ${evaluators.slice(0, 4).map((item) => `${item.full_name} (${roleLabel(item.role)})`).join(" · ")}`, 10);
         line(`Generado por: ${generatorStaff?.full_name || (accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "Coordinación académica")}`, 10);
         line(`Fecha de generación: ${formatDate(ecuadorToday())} · Versión ${version}`, 10);
-        line(`Estado: ${official ? "INFORME OFICIAL" : "BORRADOR"}`, 10, true, official ? colors.approved : colors.correction);
+        if (official) line("Estado: INFORME OFICIAL", 10, true, colors.approved);
         line(`Código del documento: ${documentCode}`, 10, true);
         line(`Código de verificación SIACD: ${verificationCode}`, 9);
         ensure(35);
@@ -1287,7 +1284,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
           "Información pendiente o incompleta",
           [
             ...warnings,
-            "El documento se emite como BORRADOR y puede volver a generarse en cualquier momento con los datos actualizados.",
+            "El documento refleja la información disponible y puede volver a generarse en cualquier momento con los datos actualizados.",
           ],
           "amber",
         );
@@ -1341,7 +1338,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const storagePath = `${teacher.id}/documents/formal-${definition.key}-v${version}-${Date.now()}.pdf`;
       const { error: uploadError } = await supabase.storage.from("siacd-evidence").upload(storagePath, blob, { contentType: "application/pdf", upsert: false });
       if (uploadError) {
-        setMessage(`${definition.title} se descargó ${official ? "como documento oficial" : "como borrador"}, pero no pudo guardarse en SIACD: ${uploadError.message}`);
+        setMessage(`${definition.title} se descargó, pero no pudo guardarse en SIACD: ${uploadError.message}`);
         return;
       }
 
@@ -1354,7 +1351,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         generated_by: null,
         generated_by_staff_id: staffId,
         issued_on: issuedOn,
-        observation: `${official ? "OFICIAL" : "BORRADOR"} · FORMATO APA 7 · Versión ${version}`,
+        observation: `${official ? "OFICIAL" : "INFORMACIÓN PENDIENTE"} · FORMATO APA 7 · Versión ${version}`,
       });
       if (registerError) {
         await supabase.storage.from("siacd-evidence").remove([storagePath]);
@@ -1362,7 +1359,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         return;
       }
 
-      setMessage(`${definition.title} generado${official ? " como documento oficial" : " como borrador"} y guardado en SIACD.`);
+      setMessage(`${definition.title} generado y guardado en SIACD.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo generar el informe.");
     } finally {
@@ -1373,7 +1370,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
   return <div style={{ position: "fixed", inset: 0, background: "rgba(8,22,38,.58)", zIndex: 10020, display: "grid", placeItems: "center", padding: 18 }}>
     <section style={{ width: "min(940px,96vw)", maxHeight: "92vh", overflow: "auto", background: "white", borderRadius: 18, boxShadow: "0 24px 70px rgba(0,0,0,.24)" }}>
       <header style={{ padding: "20px 22px", background: "#0d2946", color: "white", display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start" }}>
-        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes del docente</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>SIACD genera únicamente el Informe de Inducción y el Informe Final. Ambos pueden emitirse como borrador cuando existan datos pendientes.</p></div>
+        <div><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2 }}>DOCUMENTACIÓN INSTITUCIONAL</span><h2 style={{ margin: "5px 0 2px" }}>Informes del docente</h2><p style={{ margin: 0, opacity: .78, fontSize: 13 }}>SIACD genera únicamente el Informe de Inducción y el Informe Final. Ambos pueden generarse aun cuando existan datos pendientes.</p></div>
         <button onClick={onClose} aria-label="Cerrar" style={{ border: 0, background: "rgba(255,255,255,.12)", color: "white", borderRadius: 10, padding: 8, cursor: "pointer" }}><X size={18}/></button>
       </header>
       <div style={{ padding: 22 }}>
@@ -1383,7 +1380,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
             <TriangleAlert size={19} style={{ flex: "0 0 auto", marginTop: 1 }}/>
             <div>
               <strong style={{ display: "block", fontSize: 13 }}>El informe tiene información pendiente</strong>
-              <span style={{ fontSize: 12 }}>Puede generarlo de todas formas. Se identificará como BORRADOR y reflejará el estado actual del expediente.</span>
+              <span style={{ fontSize: 12 }}>Puede generarlo de todas formas; el documento reflejará el estado actual del expediente.</span>
             </div>
           </div>
           <ul style={{ margin: "0 0 0 27px", padding: 0, display: "grid", gap: 4, fontSize: 12 }}>
