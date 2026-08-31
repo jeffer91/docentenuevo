@@ -62,7 +62,7 @@ export default function DocumentVerification() {
       <header style={{ background: "linear-gradient(135deg,#071c34,#0d3b67)", color: "white", borderRadius: 18, padding: "22px 24px" }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}><ShieldCheck size={24}/><strong>ITSQMET · SIACD</strong></div>
         <h1 style={{ margin: "10px 0 4px", fontSize: 25 }}>Verificación de documento</h1>
-        <p style={{ margin: 0, color: "#cfdeec", fontSize: 13 }}>Consulte la autenticidad de un informe emitido por SIACD.</p>
+        <p style={{ margin: 0, color: "#cfdeec", fontSize: 13 }}>Consulte la autenticidad de un documento institucional emitido por SIACD.</p>
       </header>
 
       <form onSubmit={submit} style={{ display: "flex", gap: 8, background: "white", border: "1px solid #dfe7ef", borderRadius: 14, padding: 10 }}>
@@ -77,7 +77,7 @@ export default function DocumentVerification() {
           {result.valid ? <CheckCircle2 size={21}/> : <XCircle size={21}/>}<div><strong style={{ display: "block" }}>{result.authenticity || (result.valid ? "Documento auténtico" : "Documento no válido")}</strong><span style={{ fontSize: 12 }}>{result.code || code}</span></div>
         </div>
         {result.valid && <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 12 }}>
-          {[["Informe", result.report_name], ["Estado", result.report_status], ["Docente", result.teacher], ["Carrera", result.career], ["Asignatura", result.subject], ["Período", result.period], ["Modalidad", result.modality], ["Fecha", dateLabel(result.issued_on)], ["Versión", result.version ? `v${result.version}` : "—"]].map(([label, value]) => <div key={label} style={{ borderLeft: "3px solid #dce5ed", paddingLeft: 9 }}><span style={{ display: "block", fontSize: 9, color: "#718498", textTransform: "uppercase", fontWeight: 800 }}>{label}</span><strong style={{ display: "block", marginTop: 3, fontSize: 12.5 }}>{value || "—"}</strong></div>)}
+          {[["Documento", result.report_name], ["Estado", result.report_status], ["Docente", result.teacher], ["Carrera", result.career], ["Asignatura", result.subject], ["Período", result.period], ["Modalidad", result.modality], ["Fecha", dateLabel(result.issued_on)], ["Versión", result.version ? `v${result.version}` : "—"]].map(([label, value]) => <div key={label} style={{ borderLeft: "3px solid #dce5ed", paddingLeft: 9 }}><span style={{ display: "block", fontSize: 9, color: "#718498", textTransform: "uppercase", fontWeight: 800 }}>{label}</span><strong style={{ display: "block", marginTop: 3, fontSize: 12.5 }}>{value || "—"}</strong></div>)}
         </div>}
       </article>}
 
