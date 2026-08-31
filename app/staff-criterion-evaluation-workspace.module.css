@@ -9,3 +9,8 @@
 .evaluation{border-color:#d8e1e8;background:#fbfcfd}.scoreButtons button{transition:border-color .15s ease,background .15s ease,box-shadow .15s ease,transform .15s ease}.scoreButtons button:hover{transform:translateY(-1px)}
 .scoreButtons button:nth-child(1){--score:#b84a4a;--scoreSoft:#fdeeee;border-color:#efcece;color:#943a3a;background:#fffafa}.scoreButtons button:nth-child(2){--score:#c9682c;--scoreSoft:#fff0e7;border-color:#efd3c1;color:#a45222;background:#fffaf7}.scoreButtons button:nth-child(3){--score:#d09020;--scoreSoft:#fff5dc;border-color:#edd8a7;color:#936816;background:#fffdf7}.scoreButtons button:nth-child(4){--score:#3f8a63;--scoreSoft:#eaf6ef;border-color:#cfe6d8;color:#2f704d;background:#fbfefc}.scoreButtons button:nth-child(5){--score:#2e7d5b;--scoreSoft:#e3f2e9;border-color:#c4dfcf;color:#246848;background:#f9fdfb}.scoreButtons button span{color:inherit;opacity:.78}.scoreButtons button.scoreSelected{border-color:var(--score)!important;background:var(--scoreSoft)!important;color:var(--score)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--score) 16%,transparent)}
 .naBox{border-color:#dac9ec;background:#f8f3fc}.noticeTitle{color:#684a92}.noticeTitle p{color:#6f5b80}.approvedNotice{background:#e9f6ee;border-color:#cbe6d5;color:#2d704b}.waitingCorrection,.previousReview{background:#fff2ed;border-color:#efd1c5;color:#8b4a32}
+
+.teacherAck,.teacherAckPending{margin-top:9px;border-radius:9px;padding:8px 10px;display:flex;align-items:center;gap:7px;font-size:11px}
+.teacherAck{background:#edf8f1;color:#2f6d49;border:1px solid #d0e8d8}
+.teacherAckPending{background:#f5f7fa;color:#687b8d;border:1px solid #dfe6ed}
+.teacherAck svg,.teacherAckPending svg{flex:0 0 auto}
