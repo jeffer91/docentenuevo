@@ -302,7 +302,7 @@ export default function TeacherCedulaAccess({ onAuthenticated }: { onAuthenticat
 
     if (data?.device_token) {
       if (selectedCareer && data.teacher_id) {
-        const linked = await linkSelectedCareer(data.teacher_id, normalized, data.full_name ?? fullName || "Docente");
+        const linked = await linkSelectedCareer(data.teacher_id, normalized, (data.full_name ?? fullName.trim()) || "Docente");
         if (!linked.ok) {
           setBusy(false);
           setMessage(linked.error);
