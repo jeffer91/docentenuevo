@@ -176,5 +176,5 @@ test("los informes usan portada institucional y firmas ancladas", async () => {
   assert.match(js, /Datos del documento/);
   assert.match(js, /Acompañamiento docente/);
   assert.match(js, /CÓDIGO/);
-  assert.match(js, /criterios de presentación APA 7/);
+  assert.match(js, /Informe de Inducción de los Procesos Académicos a Docente: Nuevos/);
 });
