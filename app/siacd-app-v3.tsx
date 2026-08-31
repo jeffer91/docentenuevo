@@ -9,6 +9,7 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
+  FileText,
   FolderOpen,
   LayoutDashboard,
   Menu,
@@ -25,12 +26,13 @@ import AdminCareerManager from "./admin-career-manager";
 import ExpedientWorkspace from "./expedient-workspace";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "./lib/supabase";
 import { mergeDirectoryCareers, readDirectoryTeacher, writeDirectoryTeacher } from "./lib/teacher-directory";
+import MonthlyAttendanceWorkspace from "./monthly-attendance-workspace";
 import TeacherMasterModal from "./teacher-master-modal";
 import TeacherRegistrationModal, { type TeacherRegistrationInput, type TeacherRegistrationPrefill } from "./teacher-registration-modal";
 
 export type AccessMode = "landing" | "coordinator" | "admin";
 type StaffRole = "coordinator" | "approver" | "admin";
-type View = "dashboard" | "teachers" | "schedule" | "reports" | "coordinators" | "assignments" | "settings";
+type View = "dashboard" | "teachers" | "schedule" | "reports" | "documents" | "coordinators" | "assignments" | "settings";
 
 export type CatalogOption = { id: string; name: string; program?: string };
 type AcademicPeriod = { id: string; name: string };
@@ -108,6 +110,7 @@ const coordinatorNav = [
   { label: "Panel general", view: "dashboard" as const, icon: LayoutDashboard },
   { label: "Docentes", view: "teachers" as const, icon: Users },
   { label: "Cronograma", view: "schedule" as const, icon: CalendarDays },
+  { label: "Documentación", view: "documents" as const, icon: FileText },
   { label: "Reportes", view: "reports" as const, icon: BarChart3 },
 ];
 
@@ -655,6 +658,12 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
         {view === "teachers" && <TeachersPanel teachers={teachers} careers={accessMode === "coordinator" ? assignedCareers : careers} canCreate={accessMode === "coordinator"} onNew={openNewTeacher} onOpen={setSelectedTeacher} onEditMaster={setEditingTeacherMaster} />}
         {view === "schedule" && <ScheduleOverview teachers={teachers} onOpen={setSelectedTeacher} />}
         {view === "reports" && <Reports teachers={teachers} />}
+        {view === "documents" && accessMode === "coordinator" && selectedCoordinator && <MonthlyAttendanceWorkspace
+          careers={assignedCareers}
+          teachers={teachers}
+          coordinatorId={selectedCoordinator.id}
+          coordinatorName={selectedCoordinator.full_name}
+        />}
         {view === "coordinators" && accessMode === "admin" && <CoordinatorsPanel coordinators={coordinators} onNew={() => { setEditingCoordinator(null); setShowCoordinatorModal(true); }} onEdit={(coordinator) => { setEditingCoordinator(coordinator); setShowCoordinatorModal(true); }} onManage={openCareerAssignments} onToggle={toggleCoordinator} />}
         {view === "assignments" && accessMode === "admin" && <AdminCareerManager coordinators={coordinators} careers={careers} selectedStaffId={assignmentCoordinatorId} onSelectStaff={setAssignmentCoordinatorId} onChanged={loadBaseData} />}
         {view === "settings" && accessMode === "admin" && <CatalogSummary careers={careers} periods={periods} staff={staff} criteriaCount={activeCriteriaCount} />}
@@ -713,6 +722,7 @@ function Header({ accessMode, view, onNewTeacher, coordinatorName }: { accessMod
     teachers: ["Docentes y expedientes", "Busque por cédula, docente, carrera o asignatura"],
     schedule: ["Cronograma institucional", "Estado general de Áreas, Antes, Durante y Después"],
     reports: ["Estadísticas y reportes", "Indicadores de avance y brechas"],
+    documents: ["Documentación institucional", "Informes por docente y registro mensual de asistencia a la inducción"],
     coordinators: ["Coordinadores", "Cree coordinadores y gestione posteriormente sus carreras"],
     assignments: ["Asignación de carreras", "Distribuya las carreras institucionales entre los coordinadores"],
     settings: ["Catálogos", "Resumen de carreras, períodos y personal"],
