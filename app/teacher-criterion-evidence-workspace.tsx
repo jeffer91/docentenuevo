@@ -70,6 +70,10 @@ type Score = {
   evaluated_at: string | null;
 };
 
+type TeacherAcknowledgement = {
+  acknowledged_at: string;
+};
+
 type Criterion = {
   id: string;
   hito_id: string;
@@ -78,6 +82,7 @@ type Criterion = {
   mode: CriterionMode;
   criticality: string;
   expected_evidence: string | null;
+  teacher_acknowledgement: TeacherAcknowledgement | null;
   score: Score | null;
   na_request: NaRequest | null;
   request: EvidenceRequest | null;
@@ -133,7 +138,11 @@ function criterionState(criterion: Criterion) {
   if (criterion.score?.evaluated_at && (criterion.score.score ?? 3) < 3) {
     return { key: "correction", label: criterion.mode === "check" ? "Requiere ajuste" : "Requiere corrección" } as const;
   }
-  if (criterion.mode === "check") return { key: "pending", label: "Pendiente de verificación" } as const;
+  if (criterion.mode === "check") {
+    return criterion.teacher_acknowledgement
+      ? { key: "pending", label: "Confirmado · pendiente de verificación" } as const
+      : { key: "pending", label: "Pendiente de verificación" } as const;
+  }
   if (criterion.request?.status === "approved") return { key: "approved", label: "Aprobado" } as const;
   if (criterion.request?.status === "correction_required") return { key: "correction", label: "Requiere corrección" } as const;
   if (criterion.request?.status === "submitted" || criterion.request?.status === "in_review") {
@@ -408,6 +417,30 @@ export default function TeacherCriterionEvidenceWorkspace({
     await load();
   }
 
+  async function acknowledgeCheck(criterion: Criterion) {
+    if (criterion.mode !== "check" || criterion.teacher_acknowledgement) return;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    setBusy(`ack-${criterion.id}`);
+    setMessage("");
+    const { data: result, error } = await supabase.rpc("teacher_acknowledge_check", {
+      p_token: token,
+      p_expedient_id: expedientId,
+      p_criterion_id: criterion.id,
+    });
+    setBusy("");
+
+    if (error || !(result as { ok?: boolean } | null)?.ok) {
+      setMessage("No se pudo registrar su confirmación. Intente nuevamente.");
+      return;
+    }
+
+    setMessage("Confirmación registrada. Coordinación aún debe verificar y calificar este criterio.");
+    await load();
+    await onChanged?.();
+  }
+
   async function requestNotApplicable(criterion: Criterion) {
     const justification = (naJustification[criterion.id] ?? "").trim();
     if (justification.length < 8) return setMessage("Explique brevemente por qué este criterio no aplica.");
@@ -447,7 +480,7 @@ export default function TeacherCriterionEvidenceWorkspace({
 
   return <div className={styles.root}>
     <div className={styles.topline}>
-      <div><span>MI PROCESO</span><h2>Criterios de acompañamiento</h2><p>Los criterios CHECK los verifica directamente coordinación. Solo los criterios EVIDENCIA requieren que adjunte archivos, capturas o enlaces.</p></div>
+      <div><span>MI PROCESO</span><h2>Criterios de acompañamiento</h2><p>En los criterios CHECK puede confirmar que ya conoce o cumple el punto; coordinación realiza la verificación final. Solo los criterios EVIDENCIA requieren archivos, capturas o enlaces.</p></div>
       <button className={styles.refresh} onClick={() => void load()}><RefreshCw size={15}/>Actualizar</button>
     </div>
 
@@ -505,6 +538,9 @@ export default function TeacherCriterionEvidenceWorkspace({
 
                 {criterion.mode === "check" && <div className={state.key === "approved" ? styles.approvedBox : styles.currentSubmission}>
                   <div className={styles.submissionTitle}><div><strong>Verificación directa de coordinación</strong><span>No necesita adjuntar archivos ni enlaces para este criterio.</span></div><span>CHECK</span></div>
+                  {criterion.teacher_acknowledgement
+                    ? <div className={styles.checkConfirmed}><CheckCircle2 size={17}/><div><strong>Confirmado por usted</strong><p>Usted indicó que ya conoce o cumple este criterio. Coordinación todavía debe verificarlo y asignar la calificación.</p><small>{formatDate(criterion.teacher_acknowledgement.acknowledged_at)}</small></div></div>
+                    : state.key !== "approved" && !naPending && <div className={styles.checkAction}><div><strong>¿Ya conoce o cumple este criterio?</strong><p>Confírmelo para avisar a coordinación. Esta acción no lo aprueba automáticamente.</p></div><button disabled={busy === `ack-${criterion.id}`} onClick={() => void acknowledgeCheck(criterion)}>{busy === `ack-${criterion.id}` ? <Loader2 size={15}/> : <CheckCircle2 size={15}/>} Sí, ya lo conozco</button></div>}
                   {criterion.score?.observation && <div className={styles.reviewNote}><RotateCcw size={15}/><div><strong>Observación de coordinación</strong><p>{criterion.score.observation}</p></div></div>}
                 </div>}
 
