@@ -690,7 +690,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(verificationCode)}`;
       const documentCode = institutionalDocumentCode(teacher.career, definition.key, issuedOn);
       const documentTitle = reportHeaderTitle(definition.key, teacher.career, teacher.period);
-      const institutionalLogo = REPORT_LOGO_DATA_URL;
+      const institutionalLogo = REPORT_LOGO_DATA_URL || await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
       const approverStaff = ((staffResult.data ?? []) as StaffRow[]).filter((item) => item.role === "approver");
       const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "";
 
