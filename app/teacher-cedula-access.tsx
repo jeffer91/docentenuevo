@@ -61,22 +61,22 @@ export default function TeacherCedulaAccess({ onAuthenticated }: { onAuthenticat
   );
 
   useEffect(() => {
-    if (mode !== "career" || careerOptions.length || careerLoading) return;
+    if (mode !== "career" || careerOptions.length) return;
+
     const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setCareerMessage("No se pudo conectar con SIACD.");
-      return;
-    }
+    if (!supabase) return;
 
     let active = true;
-    setCareerLoading(true);
-    setCareerMessage("");
+    void (async () => {
+      setCareerLoading(true);
+      setCareerMessage("");
 
-    void Promise.all([
-      supabase.from("careers").select("id, name, program").eq("active", true).order("name"),
-      supabase.from("siacd_staff").select("id, full_name").eq("role", "coordinator").eq("active", true),
-      supabase.from("siacd_staff_careers").select("staff_id, career_id"),
-    ]).then(([careerResult, staffResult, assignmentResult]) => {
+      const [careerResult, staffResult, assignmentResult] = await Promise.all([
+        supabase.from("careers").select("id, name, program").eq("active", true).order("name"),
+        supabase.from("siacd_staff").select("id, full_name").eq("role", "coordinator").eq("active", true),
+        supabase.from("siacd_staff_careers").select("staff_id, career_id"),
+      ]);
+
       if (!active) return;
       setCareerLoading(false);
 
@@ -122,10 +122,10 @@ export default function TeacherCedulaAccess({ onAuthenticated }: { onAuthenticat
       if (!options.length) {
         setCareerMessage("No existen carreras con coordinador asignado. Administración debe completar la asignación primero.");
       }
-    });
+    })();
 
     return () => { active = false; };
-  }, [careerLoading, careerOptions.length, mode]);
+  }, [careerOptions.length, mode]);
 
   if (!configured) {
     return <div className={styles.center}><div className={styles.card}><h1>SIACD Docentes</h1><p>La conexión con Supabase no está configurada.</p></div></div>;
