@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, FileText, Loader2, TestTube2, X } from "lucide-react";
+import { Download, FileText, Loader2, TestTube2, TriangleAlert, X } from "lucide-react";
+import { jsPDF } from "jspdf";
 import { useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "./lib/supabase";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
@@ -57,6 +58,12 @@ type StaffRow = { id: string; full_name: string; role: string };
 type ReviewCycle = { id: string; sequence: number; title: string; closed_at: string | null; status: string; percent: number | null };
 type ReviewWorkspace = { cycles?: ReviewCycle[] };
 type ReportDefinition = { key: ReportKey; title: string; subtitle: string; phase?: Phase };
+
+type GenerationWarning = {
+  definition: ReportDefinition;
+  reasons: string[];
+  summary: Summary;
+};
 
 type CriterionRow = {
   definition: Definition;
@@ -271,6 +278,49 @@ function improvementItems(summary: Summary, components: ComponentSummary[]) {
   if (summary.correction) items.push("Priorizar los criterios por corregir y verificar el reenvío del docente.");
   if (!items.length) items.push("No se identifican aspectos pendientes de mejora en el alcance evaluado.");
   return [...new Set(items)].slice(0, 6);
+}
+
+
+function generationWarnings(
+  definition: ReportDefinition,
+  summary: Summary,
+  rows: CriterionRow[],
+  reviewCycles: ReviewCycle[],
+  teacher: Teacher,
+) {
+  const reasons: string[] = [];
+  if (!teacher.career?.trim()) reasons.push("No está registrada la carrera del expediente.");
+  if (!teacher.subject?.trim()) reasons.push("No está registrada la asignatura del expediente.");
+  if (!teacher.period?.trim()) reasons.push("No está registrado el período académico.");
+  if (!teacher.modality?.trim()) reasons.push("No está registrada la modalidad.");
+
+  if (summary.total === 0) {
+    reasons.push("No existen criterios configurados para el alcance de este informe.");
+  } else if (summary.evaluated === 0) {
+    reasons.push(`No existen criterios evaluados de los ${summary.applicable} criterios aplicables.`);
+  } else if (summary.evaluated < summary.applicable) {
+    reasons.push(`${summary.applicable - summary.evaluated} criterios aplicables todavía no tienen calificación.`);
+  }
+
+  if (summary.pending > 0) reasons.push(`${summary.pending} criterios permanecen pendientes.`);
+  if (summary.review + summary.resent > 0) reasons.push(`${summary.review + summary.resent} criterios están en revisión o fueron reenviados.`);
+  if (summary.correction > 0) reasons.push(`${summary.correction} criterios requieren corrección.`);
+
+  const evidenceRows = rows.filter((row) => Boolean(row.workspace?.request));
+  if (evidenceRows.length) {
+    const approvedEvidence = evidenceRows.filter((row) =>
+      row.workspace?.request?.status === "approved" || row.latest?.status === "approved"
+    ).length;
+    if (approvedEvidence < evidenceRows.length) {
+      reasons.push(`${evidenceRows.length - approvedEvidence} criterios EVIDENCIA todavía no cuentan con evidencia aprobada.`);
+    }
+  }
+
+  if (definition.key === "informe_consolidado" && !reviewCycles.some((cycle) => cycle.status === "closed")) {
+    reasons.push("Todavía no existen ciclos de revisión cerrados para mostrar evolución histórica.");
+  }
+
+  return [...new Set(reasons)];
 }
 
 function makeCanvas(width: number, height: number) {
@@ -544,6 +594,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
   const [busy, setBusy] = useState<ReportKey | "">("");
   const [demoBusy, setDemoBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [warning, setWarning] = useState<GenerationWarning | null>(null);
   const reportCards = useMemo(() => reports, []);
   const isDemo = /\bdemo\b/i.test(teacher.name);
 
@@ -576,9 +627,13 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
     }
   }
 
-  async function generate(definition: ReportDefinition) {
+  async function generate(definition: ReportDefinition, force = false) {
     const supabase = getSupabaseBrowserClient();
-    if (!supabase) return;
+    if (!supabase) {
+      setMessage("No se pudo conectar con SIACD para reunir la información del informe.");
+      return;
+    }
+    setWarning(null);
     setBusy(definition.key);
     setMessage("");
     try {
@@ -616,6 +671,11 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       });
       const summary = summarize(rows);
       const official = summary.official;
+      const warnings = generationWarnings(definition, summary, rows, reviewCycles, teacher);
+      if (warnings.length && !force) {
+        setWarning({ definition, reasons: warnings, summary });
+        return;
+      }
       const version = (documentsResult.data ?? []).filter((item) => item.document_type === definition.key && item.status !== "void").length + 1;
       const code = `SIACD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(code)}`;
@@ -623,7 +683,6 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const approverStaff = ((staffResult.data ?? []) as StaffRow[]).filter((item) => item.role === "approver");
       const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "";
 
-      const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const pageWidth = 210;
       const pageHeight = 297;
@@ -1210,6 +1269,17 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       };
 
       drawHeader();
+      if (warnings.length) {
+        section("Estado de la información", "Este documento se genera con la información disponible en SIACD al momento de la descarga.");
+        callout(
+          "Información pendiente o incompleta",
+          [
+            ...warnings,
+            "El documento se emite como BORRADOR y puede volver a generarse en cualquier momento con los datos actualizados.",
+          ],
+          "amber",
+        );
+      }
       drawExecutive(rows, definition.phase ? `la etapa ${phaseLabels[definition.phase]}` : "el acompañamiento consolidado");
       if (definition.key === "informe_consolidado") drawHistory();
       drawDetails(rows, definition.key === "informe_consolidado");
@@ -1244,9 +1314,16 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       }
 
       const blob = pdf.output("blob");
+      const fileName = `${safeName(definition.title.toLowerCase())}-${safeName(teacher.name.toLowerCase())}-v${version}.pdf`;
+      pdf.save(fileName);
+
       const storagePath = `${teacher.id}/documents/formal-${definition.key}-v${version}-${Date.now()}.pdf`;
       const { error: uploadError } = await supabase.storage.from("siacd-evidence").upload(storagePath, blob, { contentType: "application/pdf", upsert: false });
-      if (uploadError) throw new Error(`No se pudo guardar el PDF: ${uploadError.message}`);
+      if (uploadError) {
+        setMessage(`${definition.title} se descargó ${official ? "como documento oficial" : "como borrador"}, pero no pudo guardarse en SIACD: ${uploadError.message}`);
+        return;
+      }
+
       const { error: registerError } = await supabase.from("generated_documents").insert({
         expedient_id: teacher.id,
         document_type: definition.key,
@@ -1260,10 +1337,11 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       });
       if (registerError) {
         await supabase.storage.from("siacd-evidence").remove([storagePath]);
-        throw new Error(`No se pudo registrar el documento: ${registerError.message}`);
+        setMessage(`${definition.title} se descargó, pero no pudo registrarse en el historial de SIACD: ${registerError.message}`);
+        return;
       }
-      pdf.save(`${safeName(definition.title.toLowerCase())}-${safeName(teacher.name.toLowerCase())}-v${version}.pdf`);
-      setMessage(`${definition.title} generado${official ? " como documento oficial" : " como borrador"}.`);
+
+      setMessage(`${definition.title} generado${official ? " como documento oficial" : " como borrador"} y guardado en SIACD.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo generar el informe.");
     } finally {
@@ -1279,6 +1357,25 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       </header>
       <div style={{ padding: 22 }}>
         {message && <div style={{ padding: "10px 12px", borderRadius: 10, background: "#eef5fb", marginBottom: 14, color: "#173b5c", fontSize: 13 }}>{message}</div>}
+        {warning && <div style={{ padding: 14, borderRadius: 12, border: "1px solid #ead5a7", background: "#fff9ec", marginBottom: 14, color: "#654b17", display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+            <TriangleAlert size={19} style={{ flex: "0 0 auto", marginTop: 1 }}/>
+            <div>
+              <strong style={{ display: "block", fontSize: 13 }}>El informe tiene información pendiente</strong>
+              <span style={{ fontSize: 12 }}>Puede generarlo de todas formas. Se identificará como BORRADOR y reflejará el estado actual del expediente.</span>
+            </div>
+          </div>
+          <ul style={{ margin: "0 0 0 27px", padding: 0, display: "grid", gap: 4, fontSize: 12 }}>
+            {warning.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+          </ul>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setWarning(null)} style={{ border: "1px solid #d8c697", background: "white", color: "#654b17", borderRadius: 9, padding: "8px 11px", fontWeight: 750, cursor: "pointer" }}>Cancelar</button>
+            <button type="button" disabled={Boolean(busy)} onClick={() => void generate(warning.definition, true)} style={{ border: 0, background: "#8a6419", color: "white", borderRadius: 9, padding: "8px 11px", fontWeight: 800, cursor: busy ? "wait" : "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
+              {busy === warning.definition.key ? <Loader2 size={14}/> : <Download size={14}/>}
+              {busy === warning.definition.key ? "Generando…" : "Generar de todas formas"}
+            </button>
+          </div>
+        </div>}
         {isDemo && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: 11, marginBottom: 14, border: "1px solid #e1d8ef", background: "#faf7fd", borderRadius: 12 }}><TestTube2 size={17}/><strong style={{ fontSize: 12 }}>Docente de prueba</strong><button disabled={Boolean(demoBusy || busy)} onClick={() => void prepareDemo("mixed")} style={{ border: "1px solid #d8cae8", background: "white", borderRadius: 9, padding: "7px 10px", cursor: "pointer", fontWeight: 750 }}>Escenario mixto</button><button disabled={Boolean(demoBusy || busy)} onClick={() => void prepareDemo("approved")} style={{ border: 0, background: "#2e7d5b", color: "white", borderRadius: 9, padding: "7px 10px", cursor: "pointer", fontWeight: 750 }}>Todo aprobado</button></div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>
           {reportCards.map((item) => <article key={item.key} style={{ border: "1px solid #dce4eb", borderRadius: 13, padding: 16, display: "grid", gap: 11 }}><FileText size={20}/><div><strong style={{ display: "block", fontSize: 15 }}>{item.title}</strong><span style={{ fontSize: 12, color: "#66788a" }}>{item.subtitle}</span></div><button disabled={Boolean(busy || demoBusy)} onClick={() => void generate(item)} style={{ border: 0, borderRadius: 9, padding: "9px 11px", background: "#143d63", color: "white", fontWeight: 800, cursor: busy ? "wait" : "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 7 }}>{busy === item.key ? <Loader2 size={15}/> : <Download size={15}/>} {busy === item.key ? "Generando…" : "Generar PDF"}</button></article>)}
