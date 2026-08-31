@@ -26,7 +26,7 @@ import ExpedientWorkspace from "./expedient-workspace";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "./lib/supabase";
 import { mergeDirectoryCareers, readDirectoryTeacher, writeDirectoryTeacher } from "./lib/teacher-directory";
 import TeacherMasterModal from "./teacher-master-modal";
-import TeacherRegistrationModal, { type TeacherRegistrationInput } from "./teacher-registration-modal";
+import TeacherRegistrationModal, { type TeacherRegistrationInput, type TeacherRegistrationPrefill } from "./teacher-registration-modal";
 
 export type AccessMode = "landing" | "coordinator" | "admin";
 type StaffRole = "coordinator" | "approver" | "admin";
@@ -67,6 +67,18 @@ export type Teacher = {
   currentHito: string;
   criticalGaps: number;
   hitosExecuted: number;
+};
+
+type PendingTeacherAssignment = {
+  id: string;
+  teacherId: string;
+  careerId: string;
+  nationalId: string;
+  name: string;
+  email: string;
+  entryDate: string;
+  career: string;
+  createdAt: string;
 };
 
 type CoordinatorInput = {
@@ -221,6 +233,8 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
   const [periods, setPeriods] = useState<AcademicPeriod[]>([]);
   const [activeCriteriaCount, setActiveCriteriaCount] = useState(0);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [pendingAssignments, setPendingAssignments] = useState<PendingTeacherAssignment[]>([]);
+  const [pendingTeacherToComplete, setPendingTeacherToComplete] = useState<PendingTeacherAssignment | null>(null);
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("");
   const [assignmentCoordinatorId, setAssignmentCoordinatorId] = useState("");
   const [loading, setLoading] = useState(accessMode !== "landing" && configured);
@@ -316,6 +330,47 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     setTeachers(((data ?? []) as Record<string, unknown>[]).map((row) => mapExpedient(row, indicatorMap.get(String(row.id)))));
   }, [accessMode]);
 
+  const loadPendingAssignments = useCallback(async (coordinatorId?: string) => {
+    if (!coordinatorId) {
+      setPendingAssignments([]);
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from("teacher_onboarding_assignments")
+      .select("id, teacher_id, career_id, created_at, teachers(national_id, full_name, institutional_email, started_institution_on), careers(name, program)")
+      .eq("coordinator_staff_id", coordinatorId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      if (/teacher_onboarding_assignments|schema cache|does not exist/i.test(error.message)) {
+        setToast("Falta aplicar la migración 20260831100000_teacher_onboarding_career_assignment.sql.");
+        return;
+      }
+      setToast(`No se pudieron cargar los docentes preasignados: ${error.message}`);
+      return;
+    }
+
+    setPendingAssignments(((data ?? []) as Record<string, unknown>[]).map((row) => {
+      const teacher = relation(row.teachers);
+      return {
+        id: String(row.id),
+        teacherId: String(row.teacher_id ?? ""),
+        careerId: String(row.career_id ?? ""),
+        nationalId: String(teacher?.national_id ?? ""),
+        name: String(teacher?.full_name ?? "Sin nombre"),
+        email: String(teacher?.institutional_email ?? ""),
+        entryDate: String(teacher?.started_institution_on ?? ""),
+        career: relationName(row.careers),
+        createdAt: String(row.created_at ?? ""),
+      };
+    }));
+  }, []);
+
   useEffect(() => {
     if (accessMode !== "landing" && configured) void loadBaseData();
   }, [accessMode, configured, loadBaseData]);
@@ -330,11 +385,15 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
 
   useEffect(() => {
     if (accessMode === "admin") {
+      setPendingAssignments([]);
       void loadExpedients();
       return;
     }
-    if (accessMode === "coordinator" && selectedCoordinatorId) void loadExpedients(selectedCoordinatorId);
-  }, [accessMode, loadExpedients, selectedCoordinatorId]);
+    if (accessMode === "coordinator" && selectedCoordinatorId) {
+      void loadExpedients(selectedCoordinatorId);
+      void loadPendingAssignments(selectedCoordinatorId);
+    }
+  }, [accessMode, loadExpedients, loadPendingAssignments, selectedCoordinatorId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -351,7 +410,19 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
   function changeCoordinator() {
     setSelectedCoordinatorId("");
     setTeachers([]);
+    setPendingAssignments([]);
+    setPendingTeacherToComplete(null);
     if (typeof window !== "undefined") window.sessionStorage.removeItem("siacd-coordinator-id");
+  }
+
+  function openNewTeacher() {
+    setPendingTeacherToComplete(null);
+    setShowTeacherModal(true);
+  }
+
+  function completePendingTeacher(assignment: PendingTeacherAssignment) {
+    setPendingTeacherToComplete(assignment);
+    setShowTeacherModal(true);
   }
 
   function openCareerAssignments(coordinator?: StaffMember) {
@@ -517,11 +588,31 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
       firebaseSynced = false;
     }
 
+    const { error: assignmentCompleteError } = await supabase
+      .from("teacher_onboarding_assignments")
+      .update({
+        status: "completed",
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq("teacher_id", teacherId)
+      .eq("career_id", input.careerId)
+      .eq("coordinator_staff_id", selectedCoordinator.id)
+      .eq("status", "pending");
+
     setShowTeacherModal(false);
-    setToast(firebaseSynced
-      ? "Docente, directorio y expediente guardados correctamente"
-      : "Expediente creado. Firebase no pudo sincronizarse; los datos de SIACD quedaron guardados.");
-    await loadExpedients(selectedCoordinator.id);
+    setPendingTeacherToComplete(null);
+    if (assignmentCompleteError) {
+      setToast("Expediente guardado, pero no se pudo cerrar la preasignación del docente.");
+    } else {
+      setToast(firebaseSynced
+        ? "Docente, directorio y expediente guardados correctamente"
+        : "Expediente creado. Firebase no pudo sincronizarse; los datos de SIACD quedaron guardados.");
+    }
+    await Promise.all([
+      loadExpedients(selectedCoordinator.id),
+      loadPendingAssignments(selectedCoordinator.id),
+    ]);
   }
 
   if (accessMode === "landing") return <AccessLanding />;
@@ -557,9 +648,11 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
       {mobileOpen && <button aria-label="Cerrar menú" className="mobile-scrim" onClick={() => setMobileOpen(false)} />}
 
       <main className="main">
-        <Header accessMode={accessMode} view={view} onNewTeacher={() => setShowTeacherModal(true)} coordinatorName={selectedCoordinator?.full_name} />
+        <Header accessMode={accessMode} view={view} onNewTeacher={openNewTeacher} coordinatorName={selectedCoordinator?.full_name} />
+        {view === "dashboard" && accessMode === "coordinator" && pendingAssignments.length > 0 && <PendingTeacherNotice count={pendingAssignments.length} onOpen={() => setView("teachers")} />}
         {view === "dashboard" && <Dashboard teachers={teachers} accessMode={accessMode} coordinatorCount={coordinators.filter((item) => item.active).length} onViewTeachers={() => setView("teachers")} onOpenTeacher={setSelectedTeacher} />}
-        {view === "teachers" && <TeachersPanel teachers={teachers} careers={accessMode === "coordinator" ? assignedCareers : careers} canCreate={accessMode === "coordinator"} onNew={() => setShowTeacherModal(true)} onOpen={setSelectedTeacher} onEditMaster={setEditingTeacherMaster} />}
+        {view === "teachers" && accessMode === "coordinator" && <PendingTeachersPanel assignments={pendingAssignments} onComplete={completePendingTeacher} />}
+        {view === "teachers" && <TeachersPanel teachers={teachers} careers={accessMode === "coordinator" ? assignedCareers : careers} canCreate={accessMode === "coordinator"} onNew={openNewTeacher} onOpen={setSelectedTeacher} onEditMaster={setEditingTeacherMaster} />}
         {view === "schedule" && <ScheduleOverview teachers={teachers} onOpen={setSelectedTeacher} />}
         {view === "reports" && <Reports teachers={teachers} />}
         {view === "coordinators" && accessMode === "admin" && <CoordinatorsPanel coordinators={coordinators} onNew={() => { setEditingCoordinator(null); setShowCoordinatorModal(true); }} onEdit={(coordinator) => { setEditingCoordinator(coordinator); setShowCoordinatorModal(true); }} onManage={openCareerAssignments} onToggle={toggleCoordinator} />}
@@ -567,7 +660,21 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
         {view === "settings" && accessMode === "admin" && <CatalogSummary careers={careers} periods={periods} staff={staff} criteriaCount={activeCriteriaCount} />}
       </main>
 
-      {showTeacherModal && selectedCoordinator && <TeacherRegistrationModal careers={assignedCareers} periods={periods} coordinatorName={selectedCoordinator.full_name} onClose={() => setShowTeacherModal(false)} onSave={saveTeacher} />}
+      {showTeacherModal && selectedCoordinator && <TeacherRegistrationModal
+        careers={pendingTeacherToComplete ? assignedCareers.filter((career) => career.id === pendingTeacherToComplete.careerId) : assignedCareers}
+        periods={periods}
+        coordinatorName={selectedCoordinator.full_name}
+        initialTeacher={pendingTeacherToComplete ? {
+          nationalId: pendingTeacherToComplete.nationalId,
+          name: pendingTeacherToComplete.name,
+          email: pendingTeacherToComplete.email,
+          entryDate: pendingTeacherToComplete.entryDate,
+          careerId: pendingTeacherToComplete.careerId,
+          careerName: pendingTeacherToComplete.career,
+        } satisfies TeacherRegistrationPrefill : null}
+        onClose={() => { setShowTeacherModal(false); setPendingTeacherToComplete(null); }}
+        onSave={saveTeacher}
+      />}
       {showCoordinatorModal && accessMode === "admin" && <CoordinatorModal coordinator={editingCoordinator} onClose={() => { setShowCoordinatorModal(false); setEditingCoordinator(null); }} onSave={saveCoordinator} />}
       {editingTeacherMaster && <TeacherMasterModal teacher={{ teacherId: editingTeacherMaster.teacherId, nationalId: editingTeacherMaster.nationalId, name: editingTeacherMaster.name, email: editingTeacherMaster.email, entryDate: editingTeacherMaster.entryDate }} careers={accessMode === "admin" ? careers : assignedCareers} onClose={() => setEditingTeacherMaster(null)} onChanged={async () => { await loadExpedients(accessMode === "coordinator" ? selectedCoordinatorId : undefined); }} />}
       {selectedTeacher && <ExpedientWorkspace teacher={selectedTeacher} accessMode={accessMode} coordinatorName={staff.find((item) => item.id === selectedTeacher.coordinatorId)?.full_name ?? selectedCoordinator?.full_name ?? "Coordinador"} onClose={() => setSelectedTeacher(null)} onChanged={async () => { await loadExpedients(accessMode === "coordinator" ? selectedCoordinatorId : undefined); }} />}
@@ -611,6 +718,15 @@ function Header({ accessMode, view, onNewTeacher, coordinatorName }: { accessMod
     settings: ["Catálogos", "Resumen de carreras, períodos y personal"],
   };
   return <header className="topline"><div><div className="eyebrow">Sistema Integral de Acompañamiento</div><h1>{titles[view][0]}</h1><p className="subtitle">{titles[view][1]}</p></div><div className="top-actions">{accessMode === "coordinator" && <button className="primary-button" onClick={onNewTeacher}><Plus size={15} />Nuevo docente</button>}</div></header>;
+}
+
+function PendingTeacherNotice({ count, onOpen }: { count: number; onOpen: () => void }) {
+  return <section className="section-card"><div className="panel-head"><div><h3>Docentes pendientes de completar expediente</h3><p>{count} docente{count === 1 ? "" : "s"} seleccionó su carrera y quedó anexado a esta coordinación.</p></div><button className="secondary-button" onClick={onOpen}>Revisar pendientes</button></div></section>;
+}
+
+function PendingTeachersPanel({ assignments, onComplete }: { assignments: PendingTeacherAssignment[]; onComplete: (assignment: PendingTeacherAssignment) => void }) {
+  if (!assignments.length) return null;
+  return <section className="section-card"><div className="panel-head"><div><h3>Preasignados desde el portal docente</h3><p>La carrera elegida por el docente determinó automáticamente esta coordinación. Complete los datos administrativos para crear el expediente.</p></div><span className="badge gold">{assignments.length} pendiente{assignments.length === 1 ? "" : "s"}</span></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Cédula</th><th>Docente</th><th>Carrera</th><th>Registro</th><th>Acción</th></tr></thead><tbody>{assignments.map((assignment) => <tr key={assignment.id}><td className="teacher-id-cell">{assignment.nationalId || "Pendiente"}</td><td><strong>{assignment.name}</strong><span className="row-meta">{assignment.email || "Sin correo"}</span></td><td>{assignment.career}</td><td>{assignment.createdAt ? new Date(assignment.createdAt).toLocaleDateString("es-EC") : "—"}</td><td><button className="primary-button" onClick={() => onComplete(assignment)}>Completar expediente <ChevronRight size={13} /></button></td></tr>)}</tbody></table></div></section>;
 }
 
 function Dashboard({ teachers, accessMode, coordinatorCount, onViewTeachers, onOpenTeacher }: { teachers: Teacher[]; accessMode: AccessMode; coordinatorCount: number; onViewTeachers: () => void; onOpenTeacher: (teacher: Teacher) => void }) {
