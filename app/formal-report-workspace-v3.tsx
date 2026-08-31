@@ -264,12 +264,12 @@ function scoreInterpretation(score: Score | null) {
 }
 
 function conclusionText(summary: Summary, components: ComponentSummary[], stats: DescriptiveStats) {
-  if (summary.evaluated === 0) return `Aún no existe una evaluación registrada para los ${summary.applicable} criterios aplicables. El informe permanece en borrador hasta que coordinación revise las evidencias y asigne las calificaciones correspondientes.`;
+  if (summary.evaluated === 0) return `Aún no existe una evaluación registrada para los ${summary.applicable} criterios aplicables. El informe refleja la información disponible hasta que coordinación revise las evidencias y asigne las calificaciones correspondientes.`;
   const best = components.filter((item) => item.compliance !== null).sort((a, b) => (b.compliance ?? 0) - (a.compliance ?? 0))[0];
   const attention = components.filter((item) => item.correction + item.pending + item.review + item.resent > 0).sort((a, b) => (b.correction * 3 + b.pending + b.review + b.resent) - (a.correction * 3 + a.pending + a.review + a.resent))[0];
   const statistical = stats.mean === null ? "" : ` La calificación promedio es ${fmt(stats.mean)} de 4, con una desviación estándar de ${fmt(stats.sd)}.`;
   if (summary.official) return `La evaluación se encuentra completa. Todos los criterios aplicables fueron evaluados y aprobados, con un cumplimiento evaluado del ${summary.compliance ?? 100} %.${statistical} El informe cumple las condiciones para emitirse como documento oficial.`;
-  return `El avance de evaluación es ${summary.advance} % y el cumplimiento de los criterios evaluados es ${summary.compliance ?? 0} %.${statistical}${best ? ` El componente con mejor desempeño es ${best.name}.` : ""}${attention ? ` La principal atención se concentra en ${attention.name}.` : ""} El proceso continúa en estado borrador.`;
+  return `El avance de evaluación es ${summary.advance} % y el cumplimiento de los criterios evaluados es ${summary.compliance ?? 0} %.${statistical}${best ? ` El componente con mejor desempeño es ${best.name}.` : ""}${attention ? ` La principal atención se concentra en ${attention.name}.` : ""} El proceso continúa con información pendiente de completar o revisar.`;
 }
 
 function improvementItems(summary: Summary, components: ComponentSummary[]) {
@@ -707,6 +707,58 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       let figureNumber = 0;
       let tableNumber = 0;
 
+      const drawArialCenteredText = (
+        text: string,
+        centerX: number,
+        top: number,
+        maxWidthMm: number,
+        fontSizePt: number,
+        bold = false,
+        maxLines = 4,
+        color = "#1c2a37",
+      ) => {
+        const dpi = 300;
+        const mmToPx = dpi / 25.4;
+        const ptToPx = dpi / 72;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.ceil(maxWidthMm * mmToPx));
+        const measure = canvas.getContext("2d");
+        if (!measure) return 0;
+        const fontPx = fontSizePt * ptToPx;
+        const fontWeight = bold ? 700 : 400;
+        measure.font = `${fontWeight} ${fontPx}px Arial, sans-serif`;
+        const words = text.trim().split(/\s+/);
+        const lines: string[] = [];
+        let current = "";
+        const availablePx = canvas.width - Math.ceil(3 * mmToPx);
+        words.forEach((word) => {
+          const candidate = current ? `${current} ${word}` : word;
+          if (current && measure.measureText(candidate).width > availablePx) {
+            lines.push(current);
+            current = word;
+          } else {
+            current = candidate;
+          }
+        });
+        if (current) lines.push(current);
+        const shown = lines.slice(0, maxLines);
+        const lineHeightPx = fontPx * 1.15;
+        canvas.height = Math.max(1, Math.ceil(shown.length * lineHeightPx + 2 * mmToPx));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return 0;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = `${fontWeight} ${fontPx}px Arial, sans-serif`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        shown.forEach((lineText, index) => {
+          ctx.fillText(lineText, canvas.width / 2, mmToPx + lineHeightPx * (index + 0.5));
+        });
+        const heightMm = canvas.height / mmToPx;
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", centerX - maxWidthMm / 2, top, maxWidthMm, heightMm);
+        return heightMm;
+      };
+
       const pageHeader = (pageNumber?: number, totalPages?: number) => {
         const top = 10;
         const height = 34;
@@ -726,56 +778,22 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.rect(rightX, top, rightWidth, height);
 
         if (institutionalLogo) {
-          pdf.addImage(institutionalLogo, "PNG", leftX + 2.5, top + 3, leftWidth - 5, 15.5);
+          pdf.addImage(institutionalLogo, "PNG", leftX + 2.5, top + 2.5, leftWidth - 5, 16);
         } else {
-          pdf.setFont(institutionalFont, "bold");
-          pdf.setFontSize(9);
-          pdf.setTextColor(13, 41, 70);
-          pdf.text("ITSQMET", leftX + leftWidth / 2, top + 12, { align: "center" });
+          drawArialCenteredText("ITSQMET", leftX + leftWidth / 2, top + 6, leftWidth - 6, 9, true, 1, "#0d2946");
         }
-
-        pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(9);
-        pdf.setTextColor(45, 58, 70);
-        pdf.text("Acompañamiento docente", leftX + leftWidth / 2, top + 27, { align: "center" });
+        drawArialCenteredText("Acompañamiento docente", leftX + leftWidth / 2, top + 23, leftWidth - 4, 9, false, 2, "#2d3a46");
 
         pdf.line(centerX, top + 10, centerX + centerWidth, top + 10);
-        pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(9);
-        pdf.setTextColor(13, 41, 70);
-        pdf.text("Coordinación General de Carreras", centerX + centerWidth / 2, top + 6.5, { align: "center" });
-
-        pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(9);
-        pdf.setTextColor(25, 38, 50);
-        const headerTitle = pdf.splitTextToSize(documentTitle, centerWidth - 6);
-        const shownHeaderTitle = headerTitle.slice(0, 4);
-        const headerLineHeight = 3.6;
-        const headerTitleTop = top + 17.5 - ((shownHeaderTitle.length - 1) * headerLineHeight) / 2;
-        pdf.text(shownHeaderTitle, centerX + centerWidth / 2, headerTitleTop, { align: "center", lineHeightFactor: 1.15 });
+        drawArialCenteredText("Coordinación General de Carreras", centerX + centerWidth / 2, top + 2, centerWidth - 4, 9, true, 2, "#0d2946");
+        drawArialCenteredText(documentTitle, centerX + centerWidth / 2, top + 12, centerWidth - 5, 9, false, 4, "#192632");
 
         pdf.line(rightX, top + 14, rightX + rightWidth, top + 14);
         pdf.line(rightX, top + 24, rightX + rightWidth, top + 24);
-        pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(9);
-        pdf.setTextColor(45, 58, 70);
-        pdf.text("CÓDIGO", rightX + rightWidth / 2, top + 4.5, { align: "center" });
-
-        pdf.setFont(institutionalFont, "normal");
-        pdf.setFontSize(9);
-        const codeLines = pdf.splitTextToSize(documentCode, rightWidth - 4).slice(0, 3);
-        pdf.text(codeLines, rightX + rightWidth / 2, top + 8.2, { align: "center", lineHeightFactor: 1.05 });
-
-        pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(9);
-        pdf.text("Versión:", rightX + 8, top + 20, { align: "center" });
-        pdf.setFont(institutionalFont, "normal");
-        pdf.text(String(version), rightX + 27, top + 20, { align: "center" });
-
-        pdf.setFont(institutionalFont, "bold");
-        pdf.text("Página:", rightX + 8, top + 30, { align: "center" });
-        pdf.setFont(institutionalFont, "normal");
-        pdf.text(pageNumber && totalPages ? `${pageNumber} de ${totalPages}` : "—", rightX + 27, top + 30, { align: "center" });
+        drawArialCenteredText("CÓDIGO", rightX + rightWidth / 2, top + 1, rightWidth - 4, 9, true, 1, "#2d3a46");
+        drawArialCenteredText(documentCode, rightX + rightWidth / 2, top + 6, rightWidth - 4, 9, false, 3, "#2d3a46");
+        drawArialCenteredText(`Versión: ${version}`, rightX + rightWidth / 2, top + 16, rightWidth - 4, 9, false, 1, "#2d3a46");
+        drawArialCenteredText(pageNumber && totalPages ? `Página: ${pageNumber} de ${totalPages}` : "Página: —", rightX + rightWidth / 2, top + 26, rightWidth - 4, 9, false, 1, "#2d3a46");
 
         y = 53;
       };
@@ -925,12 +943,8 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const drawHeader = () => {
         pageHeader();
 
-        pdf.setTextColor(13, 41, 70);
-        pdf.setFont(institutionalFont, "bold");
-        pdf.setFontSize(23);
-        const coverTitle = pdf.splitTextToSize(documentTitle, 160);
-        const titleTop = 108 - Math.max(0, coverTitle.length - 1) * 5;
-        pdf.text(coverTitle, pageWidth / 2, titleTop, { align: "center", lineHeightFactor: 1.05 });
+        const coverTitleHeight = drawArialCenteredText(documentTitle, pageWidth / 2, 91, 160, 23, true, 5, "#0d2946");
+        void coverTitleHeight;
 
         const signatureTop = 218;
         const signatureHeight = 58;
@@ -949,19 +963,9 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
           pdf.line(x, signatureTop + 36, x + signatureWidth, signatureTop + 36);
           pdf.line(x, signatureTop + 45, x + signatureWidth, signatureTop + 45);
 
-          pdf.setFont(institutionalFont, "bold");
-          pdf.setFontSize(9);
-          pdf.setTextColor(0, 0, 0);
-          pdf.text(item.heading, x + signatureWidth / 2, signatureTop + 6, { align: "center" });
-
-          pdf.setFont(institutionalFont, "normal");
-          pdf.setFontSize(9);
-          const nameLines = pdf.splitTextToSize(`Nombre: ${item.name}`, signatureWidth - 4);
-          pdf.text(nameLines.slice(0, 2), x + signatureWidth / 2, signatureTop + 41, { align: "center", lineHeightFactor: 1.05 });
-
-          const roleLines = pdf.splitTextToSize(`Cargo: ${item.role}`, signatureWidth - 4);
-          const roleTop = signatureTop + 50;
-          pdf.text(roleLines.slice(0, 2), x + signatureWidth / 2, roleTop, { align: "center", lineHeightFactor: 1.05 });
+          drawArialCenteredText(item.heading, x + signatureWidth / 2, signatureTop + 2, signatureWidth - 4, 9, true, 1, "#000000");
+          drawArialCenteredText(`Nombre: ${item.name}`, x + signatureWidth / 2, signatureTop + 37, signatureWidth - 4, 9, false, 2, "#000000");
+          drawArialCenteredText(`Cargo: ${item.role}`, x + signatureWidth / 2, signatureTop + 46, signatureWidth - 4, 9, false, 2, "#000000");
         });
 
         newPage();
