@@ -47,7 +47,8 @@ test("el bundle contiene la organización vigente", async () => {
   assert.match(js, /Antes/);
   assert.match(js, /Durante/);
   assert.match(js, /Después/);
-  assert.match(js, /Informe Consolidado/);
+  assert.match(js, /Informe de Inducción de los Procesos Académicos a Docente: Nuevos/);
+  assert.match(js, /Informe Final de Acompañamiento-Docente: Nuevos/);
 });
 
 test("un docente sin expediente puede crear su proceso desde el portal", async () => {
@@ -137,17 +138,35 @@ test("el acceso de coordinadores es directo por selección de nombre", async () 
   assert.doesNotMatch(js, /PIN coordinadores/);
 });
 
-test("el encabezado de informes usa identidad institucional y códigos por carrera", async () => {
+test("el encabezado usa identidad institucional, dos informes y códigos por carrera", async () => {
   const js = await bundledJavascript();
   const branding = await readFile(path.join(root, "app", "report-branding.ts"), "utf8");
+  const formal = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
   assert.match(js, /Coordinación General de Carreras/);
-  assert.match(js, /Informe Final de Acompañamiento-Docente nuevos Carrera/);
+  assert.match(js, /Informe de Inducción de los Procesos Académicos a Docente: Nuevos/);
+  assert.match(js, /Informe Final de Acompañamiento-Docente: Nuevos/);
   assert.match(js, /CÓDIGO/);
   assert.match(branding, /Desarrollo de Software/);
   assert.match(branding, /CTSDS/);
   assert.match(branding, /CTSUAEIN/);
+  assert.match(branding, /INF-/);
+  assert.match(branding, /RGI1-/);
   assert.match(branding, /PRO-121/);
   assert.match(branding, /REPORT_LOGO_DATA_URL/);
+  assert.doesNotMatch(formal, /informe_areas|informe_antes|informe_durante|informe_despues|informe_consolidado/);
+});
+
+test("el coordinador puede generar y versionar el registro mensual de asistencia", async () => {
+  const js = await bundledJavascript();
+  const source = await readFile(path.join(root, "app", "monthly-attendance-workspace.tsx"), "utf8");
+  assert.match(js, /Documentación institucional/);
+  assert.match(js, /Registro de Asistencia a la Inducción/);
+  assert.match(js, /Mes de archivo/);
+  assert.match(js, /Generar y guardar registro mensual/);
+  assert.match(source, /rowsPerPage = 25/);
+  assert.match(source, /induction_attendance_registers/);
+  assert.match(source, /induction_attendance_members/);
+  assert.match(source, /Cada nueva generación crea una versión/);
 });
 
 test("los informes usan portada institucional y firmas ancladas", async () => {
