@@ -137,6 +137,19 @@ test("el acceso de coordinadores es directo por selección de nombre", async () 
   assert.doesNotMatch(js, /PIN coordinadores/);
 });
 
+test("el encabezado de informes usa identidad institucional y códigos por carrera", async () => {
+  const js = await bundledJavascript();
+  const branding = await readFile(path.join(root, "app", "report-branding.ts"), "utf8");
+  assert.match(js, /Coordinación General de Carreras/);
+  assert.match(js, /Informe Final de Acompañamiento-Docente nuevos Carrera/);
+  assert.match(js, /CÓDIGO/);
+  assert.match(branding, /Desarrollo de Software/);
+  assert.match(branding, /CTSDS/);
+  assert.match(branding, /CTSUAEIN/);
+  assert.match(branding, /PRO-121/);
+  assert.match(branding, /REPORT_LOGO_DATA_URL/);
+});
+
 test("los informes usan portada institucional y firmas ancladas", async () => {
   const js = await bundledJavascript();
   assert.match(js, /Coordinador\(a\) General de Carreras/);
