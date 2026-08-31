@@ -98,12 +98,17 @@ test("el portal docente incluye el desglose y carga de evidencias", async () => 
 
 test("los informes siempre permiten generar borradores y jsPDF no se carga al hacer clic", async () => {
   const js = await bundledJavascript();
-  const source = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
+  const formalSource = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
+  const expedientSource = await readFile(path.join(root, "app", "expedient-workspace-v7.tsx"), "utf8");
+  const mainSource = await readFile(path.join(root, "app", "static-main.tsx"), "utf8");
   assert.match(js, /Generar de todas formas/);
   assert.match(js, /El informe tiene información pendiente/);
   assert.match(js, /puede volver a generarse en cualquier momento/i);
-  assert.match(source, /import \{ jsPDF \} from "jspdf"/);
-  assert.doesNotMatch(source, /await import\("jspdf"\)/);
+  assert.match(formalSource, /import \{ jsPDF \} from "jspdf"/);
+  assert.match(expedientSource, /import \{ jsPDF \} from "jspdf"/);
+  assert.doesNotMatch(formalSource, /await import\("jspdf"\)/);
+  assert.doesNotMatch(expedientSource, /await import\("jspdf"\)/);
+  assert.match(mainSource, /vite:preloadError/);
 });
 
 test("los informes distinguen avance, cumplimiento y verificación", async () => {
