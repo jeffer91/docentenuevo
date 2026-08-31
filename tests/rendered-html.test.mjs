@@ -75,14 +75,15 @@ test("el flujo legado de seis hitos no forma parte de la interfaz publicada", as
   assert.doesNotMatch(js, /H4 · Seguimiento 1/);
 });
 
-test("el acceso de coordinadores permite crear PIN en el primer ingreso", async () => {
+test("el acceso de coordinadores es directo por selección de nombre", async () => {
   const js = await bundledJavascript();
-  assert.match(js, /Seleccione su nombre/);
-  assert.match(js, /Primer ingreso/);
-  assert.match(js, /Crear PIN e ingresar/);
-  assert.match(js, /Confirmar PIN/);
+  assert.match(js, /Acceso de coordinadores/);
+  assert.match(js, /Ingreso directo/);
+  assert.match(js, /Seleccione su nombre para continuar/);
+  assert.doesNotMatch(js, /Crear PIN e ingresar/);
+  assert.doesNotMatch(js, /Confirmar PIN/);
+  assert.doesNotMatch(js, /PIN coordinadores/);
 });
-
 
 test("los informes usan portada institucional y firmas ancladas", async () => {
   const js = await bundledJavascript();
