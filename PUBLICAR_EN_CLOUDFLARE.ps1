@@ -53,6 +53,15 @@ if (-not $env:VITE_SUPABASE_PUBLISHABLE_KEY) {
 
 Write-Host "Supabase configurado." -ForegroundColor Green
 
+Write-Host "0.5/6 Verificando esquema requerido para preasignacion docente..." -ForegroundColor Cyan
+try {
+    $schemaHeaders = @{ "apikey" = $env:VITE_SUPABASE_PUBLISHABLE_KEY }
+    Invoke-RestMethod -Uri "$($env:VITE_SUPABASE_URL)/rest/v1/teacher_onboarding_assignments?select=id&limit=1" -Headers $schemaHeaders -Method Get -TimeoutSec 15 | Out-Null
+} catch {
+    throw "La base de datos aun no tiene disponible teacher_onboarding_assignments. Aplique la migracion 20260831100000_teacher_onboarding_career_assignment.sql antes de publicar esta version."
+}
+Write-Host "Esquema de preasignacion docente verificado." -ForegroundColor Green
+
 Write-Host "1/6 Instalando dependencias exactas..." -ForegroundColor Cyan
 npm ci --no-audit --no-fund
 if ($LASTEXITCODE -ne 0) { throw "Fallo la instalacion de dependencias." }
