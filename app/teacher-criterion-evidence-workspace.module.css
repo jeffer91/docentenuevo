@@ -13,3 +13,14 @@
 .submitted .criterionHead{background:#fbfdff}.correction .criterionHead{background:#fffaf7}.approved .criterionHead{background:#fbfefc}.naApproved .criterionHead{background:#fcf9fe}
 .reviewNote{border-color:#efd2c4;background:#fff4ef;color:#914b2f}.approvedBox{background:#eaf6ef;border-color:#cbe6d5;color:#2e704b}.naPendingBox{background:#f7f0fb;border-color:#dfd0ef;color:#704c98}.naPendingBox button{color:#704c98}.naForm{background:#faf6fd;border-color:#dfd2ed}.naForm strong{color:#684a92}.naForm p{color:#6f5b80}.naForm .naSend{background:#7656a8;border-color:#7656a8}
 .currentSubmission{border-left:4px solid #2f6fa8;background:#fbfdff}.sendButton{background:#1f5f92}.sendButton:hover{background:#184f7a}
+
+.checkAction,.checkConfirmed{margin-top:12px;border:1px solid #d8e5ef;border-radius:12px;padding:12px 13px;display:flex;align-items:center;justify-content:space-between;gap:14px;background:#f8fbfd}
+.checkAction>div,.checkConfirmed>div{display:grid;gap:4px}
+.checkAction strong,.checkConfirmed strong{font-size:12px;color:#173653}
+.checkAction p,.checkConfirmed p{margin:0;font-size:11px;line-height:1.45;color:#667b8e}
+.checkAction button{border:0;border-radius:10px;background:#0d3a66;color:#fff;padding:9px 12px;font:inherit;font-size:11px;font-weight:850;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.checkAction button:disabled{opacity:.55;cursor:not-allowed}
+.checkConfirmed{justify-content:flex-start;background:#eef8f2;border-color:#cfe7d8;color:#2c6a48}
+.checkConfirmed>svg{flex:0 0 auto}
+.checkConfirmed small{font-size:10px;color:#698277}
+@media(max-width:680px){.checkAction{align-items:stretch;flex-direction:column}.checkAction button{justify-content:center;width:100%}}
