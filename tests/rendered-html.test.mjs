@@ -97,7 +97,7 @@ test("el portal docente incluye el desglose y carga de evidencias", async () => 
   assert.match(js, /Documentación del docente/);
 });
 
-test("los informes siempre permiten generar borradores y jsPDF no se carga al hacer clic", async () => {
+test("los informes siempre permiten generar con información pendiente y jsPDF no se carga al hacer clic", async () => {
   const js = await bundledJavascript();
   const formalSource = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
   const expedientSource = await readFile(path.join(root, "app", "expedient-workspace-v7.tsx"), "utf8");
@@ -173,7 +173,7 @@ test("el coordinador puede generar y versionar el registro mensual de asistencia
   assert.match(source, /Cada nueva generación crea una versión/);
 });
 
-test("los informes usan portada institucional, tipografía solicitada y cuadro de firmas", async () => {
+test("los informes usan Arial en cabecera, título y cuadro de firmas", async () => {
   const js = await bundledJavascript();
   const formal = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
   assert.match(js, /ELABORADO POR:/);
@@ -183,8 +183,10 @@ test("los informes usan portada institucional, tipografía solicitada y cuadro d
   assert.match(js, /Coordinadora General de Carreras/);
   assert.match(js, /Acompañamiento docente/);
   assert.match(js, /CÓDIGO/);
-  assert.match(formal, /setFontSize\(23\)/);
-  assert.match(formal, /setFontSize\(9\)/);
+  assert.match(formal, /Arial, sans-serif/);
+  assert.match(formal, /drawArialCenteredText\(documentTitle, pageWidth \/ 2, 91, 160, 23/);
+  assert.match(formal, /drawArialCenteredText\("Coordinación General de Carreras"/);
+  assert.match(formal, /drawArialCenteredText\(item\.heading/);
   assert.doesNotMatch(formal, /coverSubtitle/);
-  assert.doesNotMatch(formal, /BORRADOR/);
+  assert.doesNotMatch(formal, /borrador/i);
 });
