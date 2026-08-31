@@ -142,6 +142,7 @@ test("el encabezado usa identidad institucional, dos informes y códigos por car
   const js = await bundledJavascript();
   const branding = await readFile(path.join(root, "app", "report-branding.ts"), "utf8");
   const formal = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
+  const attendance = await readFile(path.join(root, "app", "monthly-attendance-workspace.tsx"), "utf8");
   assert.match(js, /Coordinación General de Carreras/);
   assert.match(js, /Informe de Inducción de los Procesos Académicos a Docente: Nuevos/);
   assert.match(js, /Informe Final de Acompañamiento-Docente: Nuevos/);
@@ -153,6 +154,9 @@ test("el encabezado usa identidad institucional, dos informes y códigos por car
   assert.match(branding, /RGI1-/);
   assert.match(branding, /PRO-121/);
   assert.match(branding, /REPORT_LOGO_DATA_URL/);
+  assert.doesNotMatch(branding, /\.\.\.truncated\.\.\./);
+  assert.match(formal, /logo-itsqmet\.png/);
+  assert.match(attendance, /logo-itsqmet\.png/);
   assert.doesNotMatch(formal, /informe_areas|informe_antes|informe_durante|informe_despues|informe_consolidado/);
 });
 
