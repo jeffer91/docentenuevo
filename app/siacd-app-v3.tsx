@@ -35,7 +35,7 @@ type StaffRole = "coordinator" | "approver" | "admin";
 type View = "dashboard" | "teachers" | "schedule" | "reports" | "documents" | "coordinators" | "assignments" | "settings";
 
 export type CatalogOption = { id: string; name: string; program?: string };
-type AcademicPeriod = { id: string; name: string };
+type AcademicPeriod = { id: string; name: string; starts_on: string; ends_on: string; active: boolean };
 
 export type StaffMember = {
   id: string;
@@ -260,6 +260,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     if (!selectedCoordinator) return [];
     return careers.filter((career) => selectedCoordinator.careerIds.includes(career.id));
   }, [accessMode, careers, selectedCoordinator]);
+  const activePeriods = useMemo(() => periods.filter((period) => period.active), [periods]);
 
   const loadBaseData = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -270,7 +271,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     const [staffResult, careerResult, periodResult, criterionResult] = await Promise.all([
       supabase.from("siacd_staff").select("id, full_name, role, active, siacd_staff_careers(career_id)").order("full_name"),
       supabase.from("careers").select("id, name, program").eq("active", true).order("name"),
-      supabase.from("academic_periods").select("id, name").eq("active", true).order("starts_on", { ascending: false }),
+      supabase.from("academic_periods").select("id, name, starts_on, ends_on, active").order("starts_on", { ascending: false }),
       supabase.from("competency_definitions").select("id", { count: "exact", head: true }).eq("active", true),
     ]);
 
@@ -293,6 +294,22 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     setPeriods((periodResult.data ?? []) as AcademicPeriod[]);
     setActiveCriteriaCount(criterionResult.count ?? 0);
     setLoading(false);
+  }, []);
+
+  const refreshPeriods = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return [] as AcademicPeriod[];
+    const { data, error } = await supabase
+      .from("academic_periods")
+      .select("id, name, starts_on, ends_on, active")
+      .order("starts_on", { ascending: false });
+    if (error) {
+      setToast(`No se pudieron actualizar los períodos académicos: ${error.message}`);
+      return [] as AcademicPeriod[];
+    }
+    const rows = (data ?? []) as AcademicPeriod[];
+    setPeriods(rows);
+    return rows;
   }, []);
 
   const loadExpedients = useCallback(async (coordinatorId?: string) => {
@@ -418,12 +435,14 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     if (typeof window !== "undefined") window.sessionStorage.removeItem("siacd-coordinator-id");
   }
 
-  function openNewTeacher() {
+  async function openNewTeacher() {
+    await refreshPeriods();
     setPendingTeacherToComplete(null);
     setShowTeacherModal(true);
   }
 
-  function completePendingTeacher(assignment: PendingTeacherAssignment) {
+  async function completePendingTeacher(assignment: PendingTeacherAssignment) {
+    await refreshPeriods();
     setPendingTeacherToComplete(assignment);
     setShowTeacherModal(true);
   }
@@ -489,6 +508,21 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
     }
     const selectedCareer = assignedCareers.find((career) => career.id === input.careerId);
     if (!selectedCareer) return setToast("No se encontró la carrera seleccionada");
+
+    const { data: selectedPeriod, error: periodError } = await supabase
+      .from("academic_periods")
+      .select("id, name, starts_on, ends_on, active")
+      .eq("id", input.periodId)
+      .eq("active", true)
+      .maybeSingle();
+    if (periodError) return setToast(`No se pudo validar el período académico: ${periodError.message}`);
+    if (!selectedPeriod) return setToast("El período académico seleccionado ya no está activo. Vuelva a abrir el formulario.");
+    if (
+      input.activitiesStartDate < String(selectedPeriod.starts_on)
+      || input.activitiesStartDate > String(selectedPeriod.ends_on)
+    ) {
+      return setToast(`La fecha de inicio de actividades debe estar dentro del período ${selectedPeriod.name}.`);
+    }
 
     const now = new Date().toISOString();
     const existingResult = await supabase
@@ -666,12 +700,17 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
         />}
         {view === "coordinators" && accessMode === "admin" && <CoordinatorsPanel coordinators={coordinators} onNew={() => { setEditingCoordinator(null); setShowCoordinatorModal(true); }} onEdit={(coordinator) => { setEditingCoordinator(coordinator); setShowCoordinatorModal(true); }} onManage={openCareerAssignments} onToggle={toggleCoordinator} />}
         {view === "assignments" && accessMode === "admin" && <AdminCareerManager coordinators={coordinators} careers={careers} selectedStaffId={assignmentCoordinatorId} onSelectStaff={setAssignmentCoordinatorId} onChanged={loadBaseData} />}
-        {view === "settings" && accessMode === "admin" && <CatalogSummary careers={careers} periods={periods} staff={staff} criteriaCount={activeCriteriaCount} />}
+        {view === "settings" && accessMode === "admin" && <CatalogSummary careers={careers} periods={periods} staff={staff} criteriaCount={activeCriteriaCount} onPeriodsChanged={loadBaseData} />}
       </main>
 
       {showTeacherModal && selectedCoordinator && <TeacherRegistrationModal
         careers={pendingTeacherToComplete ? assignedCareers.filter((career) => career.id === pendingTeacherToComplete.careerId) : assignedCareers}
-        periods={periods}
+        periods={activePeriods.map((period) => ({
+          id: period.id,
+          name: period.name,
+          startsOn: period.starts_on,
+          endsOn: period.ends_on,
+        }))}
         coordinatorName={selectedCoordinator.full_name}
         initialTeacher={pendingTeacherToComplete ? {
           nationalId: pendingTeacherToComplete.nationalId,
@@ -783,8 +822,152 @@ function CoordinatorsPanel({ coordinators, onNew, onEdit, onManage, onToggle }: 
   return <section className="section-card"><div className="toolbar"><div><h3>Coordinadores</h3><p className="subtitle">Cree coordinadores y gestione posteriormente las carreras asignadas a cada uno.</p></div><button className="primary-button" onClick={onNew}><Plus size={14} />Nuevo coordinador</button></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Coordinador</th><th>Carreras asignadas</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{coordinators.map((coordinator) => <tr key={coordinator.id}><td><strong>{coordinator.full_name}</strong></td><td><strong>{coordinator.careerIds.length ? `${coordinator.careerIds.length} carrera${coordinator.careerIds.length === 1 ? "" : "s"}` : "Sin carreras"}</strong><span className="row-meta">{coordinator.careerIds.length ? "Asignadas en el módulo de carreras" : "Requiere asignación"}</span></td><td><span className={`badge ${coordinator.active ? "green" : "gray"}`}>{coordinator.active ? "Activo" : "Inactivo"}</span></td><td><div className="filters"><button className="secondary-button" onClick={() => onManage(coordinator)}>{coordinator.careerIds.length ? "Carreras" : "Asignar carreras"}</button><button className="secondary-button" onClick={() => onEdit(coordinator)}>Editar</button><button className="ghost-button" onClick={() => onToggle(coordinator)}>{coordinator.active ? "Desactivar" : "Activar"}</button></div></td></tr>)}</tbody></table></div>{!coordinators.length && <div className="empty-state"><h3>Sin coordinadores</h3><p>Cree el primer coordinador para iniciar la distribución de carreras.</p></div>}</section>;
 }
 
-function CatalogSummary({ careers, periods, staff, criteriaCount }: { careers: CatalogOption[]; periods: AcademicPeriod[]; staff: StaffMember[]; criteriaCount: number }) {
-  return <div className="metric-grid"><Metric icon={Settings} label="Carreras activas" value={String(careers.length)} note="Catálogo institucional" /><Metric icon={CalendarDays} label="Períodos activos" value={String(periods.length)} note={periods[0]?.name ?? "Sin períodos"} tone="gold" /><Metric icon={UserCog} label="Coordinadores" value={String(staff.filter((item) => item.role === "coordinator" && item.active).length)} note="Activos" tone="blue" /><Metric icon={FolderOpen} label="Criterios activos" value={String(criteriaCount)} note="Áreas · Antes · Durante · Después" tone="red" /></div>;
+function CatalogSummary({ careers, periods, staff, criteriaCount, onPeriodsChanged }: { careers: CatalogOption[]; periods: AcademicPeriod[]; staff: StaffMember[]; criteriaCount: number; onPeriodsChanged: () => Promise<void> | void }) {
+  const active = periods.filter((period) => period.active);
+  return <>
+    <div className="metric-grid"><Metric icon={Settings} label="Carreras activas" value={String(careers.length)} note="Catálogo institucional" /><Metric icon={CalendarDays} label="Períodos activos" value={String(active.length)} note={active[0]?.name ?? "Sin períodos"} tone="gold" /><Metric icon={UserCog} label="Coordinadores" value={String(staff.filter((item) => item.role === "coordinator" && item.active).length)} note="Activos" tone="blue" /><Metric icon={FolderOpen} label="Criterios activos" value={String(criteriaCount)} note="Áreas · Antes · Durante · Después" tone="red" /></div>
+    <AcademicPeriodsManager periods={periods} onChanged={onPeriodsChanged} />
+  </>;
+}
+
+function AcademicPeriodsManager({ periods, onChanged }: { periods: AcademicPeriod[]; onChanged: () => Promise<void> | void }) {
+  const [editing, setEditing] = useState<AcademicPeriod | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [startsOn, setStartsOn] = useState("");
+  const [endsOn, setEndsOn] = useState("");
+  const [active, setActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [usage, setUsage] = useState<Record<string, number>>({});
+
+  const loadUsage = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const { data, error } = await supabase.from("expedients").select("period_id");
+    if (error) return;
+    const counts: Record<string, number> = {};
+    for (const row of (data ?? []) as Array<{ period_id?: string | null }>) {
+      const id = String(row.period_id ?? "");
+      if (id) counts[id] = (counts[id] ?? 0) + 1;
+    }
+    setUsage(counts);
+  }, []);
+
+  useEffect(() => { void loadUsage(); }, [loadUsage, periods]);
+
+  function startCreate() {
+    setEditing(null);
+    setCreating(true);
+    setName("");
+    setStartsOn("");
+    setEndsOn("");
+    setActive(true);
+    setMessage("");
+  }
+
+  function startEdit(period: AcademicPeriod) {
+    setEditing(period);
+    setCreating(false);
+    setName(period.name);
+    setStartsOn(period.starts_on);
+    setEndsOn(period.ends_on);
+    setActive(period.active);
+    setMessage("");
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setCreating(false);
+    setMessage("");
+  }
+
+  async function savePeriod(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase || saving) return;
+    if (!name.trim() || !startsOn || !endsOn) return setMessage("Complete el nombre y las dos fechas.");
+    if (endsOn < startsOn) return setMessage("La fecha final no puede ser anterior a la fecha inicial.");
+
+    setSaving(true);
+    setMessage("");
+    const used = editing ? (usage[editing.id] ?? 0) > 0 : false;
+    const payload = used
+      ? { active }
+      : { name: name.trim(), starts_on: startsOn, ends_on: endsOn, active };
+
+    const result = editing
+      ? await supabase.from("academic_periods").update(payload).eq("id", editing.id)
+      : await supabase.from("academic_periods").insert(payload);
+
+    setSaving(false);
+    if (result.error) {
+      const duplicate = /duplicate|unique/i.test(result.error.message);
+      setMessage(duplicate ? "Ya existe un período con ese nombre." : `No se pudo guardar el período: ${result.error.message}`);
+      return;
+    }
+
+    cancelEdit();
+    await onChanged();
+    await loadUsage();
+  }
+
+  async function togglePeriod(period: AcademicPeriod) {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("academic_periods")
+      .update({ active: !period.active })
+      .eq("id", period.id);
+    if (error) {
+      setMessage(`No se pudo cambiar el estado del período: ${error.message}`);
+      return;
+    }
+    setMessage(period.active ? "Período desactivado. Se conserva en los expedientes históricos." : "Período activado.");
+    await onChanged();
+  }
+
+  return <section className="section-card">
+    <div className="toolbar">
+      <div><h3>Períodos académicos</h3><p className="subtitle">El administrador define los períodos disponibles para coordinadores y docentes. Los períodos usados se conservan para el historial.</p></div>
+      <button className="primary-button" onClick={startCreate}><Plus size={14} />Nuevo período</button>
+    </div>
+
+    {(creating || editing) && <form className="form-grid" onSubmit={savePeriod} style={{ marginBottom: 22 }}>
+      <div className="field full">
+        <label>Nombre del período</label>
+        <input value={name} onChange={(event) => setName(event.target.value)} disabled={Boolean(editing && (usage[editing.id] ?? 0) > 0)} placeholder="Ej. Mayo – Noviembre 2027" required />
+      </div>
+      <div className="field">
+        <label>Fecha de inicio</label>
+        <input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} disabled={Boolean(editing && (usage[editing.id] ?? 0) > 0)} required />
+      </div>
+      <div className="field">
+        <label>Fecha de finalización</label>
+        <input type="date" value={endsOn} onChange={(event) => setEndsOn(event.target.value)} disabled={Boolean(editing && (usage[editing.id] ?? 0) > 0)} required />
+      </div>
+      <div className="field full coordinator-active-field">
+        <label><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /><span><strong>Período activo</strong><small>Los períodos activos aparecen al crear nuevos procesos.</small></span></label>
+      </div>
+      {editing && (usage[editing.id] ?? 0) > 0 && <div className="field full"><div className="error-note">Este período ya tiene expedientes asociados. Para preservar el historial, su nombre y fechas quedan bloqueados; únicamente puede activarlo o desactivarlo.</div></div>}
+      {message && <div className="field full"><div className="error-note">{message}</div></div>}
+      <div className="form-actions"><button type="button" className="ghost-button" onClick={cancelEdit}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? "Guardando…" : "Guardar período"}</button></div>
+    </form>}
+
+    {message && !(creating || editing) && <div className="error-note" style={{ marginBottom: 14 }}>{message}</div>}
+
+    <div className="table-scroll"><table className="data-table"><thead><tr><th>Período</th><th>Inicio</th><th>Fin</th><th>Expedientes</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+      {periods.map((period) => <tr key={period.id}>
+        <td><strong>{period.name}</strong></td>
+        <td>{period.starts_on ? new Date(`${period.starts_on}T00:00:00`).toLocaleDateString("es-EC") : "—"}</td>
+        <td>{period.ends_on ? new Date(`${period.ends_on}T00:00:00`).toLocaleDateString("es-EC") : "—"}</td>
+        <td>{usage[period.id] ?? 0}</td>
+        <td><span className={`badge ${period.active ? "green" : "gray"}`}>{period.active ? "Activo" : "Inactivo"}</span></td>
+        <td><div className="filters"><button className="secondary-button" onClick={() => startEdit(period)}>Editar</button><button className="ghost-button" onClick={() => void togglePeriod(period)}>{period.active ? "Desactivar" : "Activar"}</button></div></td>
+      </tr>)}
+    </tbody></table></div>
+    {!periods.length && <div className="empty-state"><h3>Sin períodos académicos</h3><p>Cree el primer período para habilitar el registro de procesos.</p></div>}
+  </section>;
 }
 
 function CoordinatorModal({ coordinator, onClose, onSave }: { coordinator: StaffMember | null; onClose: () => void; onSave: (input: CoordinatorInput) => Promise<void> }) {
