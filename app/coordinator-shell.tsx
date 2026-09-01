@@ -77,7 +77,7 @@ export default function CoordinatorShell() {
     <div className="login-page">
       <section className="login-art">
         <div className="institution-brand">
-          <img src="/logo-itsqmet.png" alt="Instituto Tecnológico Superior Quito Metropolitano" />
+          <img src={`${import.meta.env.BASE_URL}logo-itsqmet.png`} alt="Instituto Tecnológico Superior Quito Metropolitano" />
           <span>SIACD · Acompañamiento Docente</span>
         </div>
         <div>
