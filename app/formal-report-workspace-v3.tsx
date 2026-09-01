@@ -663,10 +663,10 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const version = (documentsResult.data ?? []).filter((item) => item.document_type === definition.key && item.status !== "void").length + 1;
       const issuedOn = ecuadorToday();
       const verificationCode = `SIACD-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-      const verificationUrl = `https://docentenuevo.pages.dev/verificar/?codigo=${encodeURIComponent(verificationCode)}`;
+      const verificationUrl = new URL(`${import.meta.env.BASE_URL}verificar/?codigo=${encodeURIComponent(verificationCode)}`, window.location.origin).toString();
       const documentCode = institutionalDocumentCode(teacher.career, definition.key, issuedOn);
       const documentTitle = reportHeaderTitle(definition.key, teacher.career, teacher.period);
-      const institutionalLogo = REPORT_LOGO_DATA_URL || await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
+      const institutionalLogo = REPORT_LOGO_DATA_URL || await remoteImageDataUrl(new URL(`${import.meta.env.BASE_URL}logo-itsqmet.png`, window.location.origin).toString());
       const approverStaff = ((staffResult.data ?? []) as StaffRow[]).filter((item) => item.role === "approver");
       const generalCoordinatorName = approverStaff.length === 1 ? approverStaff[0].full_name : "Ing. Martha Tomalá";
 
