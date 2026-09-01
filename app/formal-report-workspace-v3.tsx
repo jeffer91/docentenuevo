@@ -114,7 +114,12 @@ const reports: ReportDefinition[] = [
   },
 ];
 
-const phaseLabels: Record<Phase, string> = { areas: "Áreas", before: "Antes", during: "Durante", after: "Después" };
+const phaseLabels: Record<Phase, string> = {
+  areas: "H1. Inducción institucional por áreas",
+  before: "H2. Preparación previa al inicio de la docencia",
+  during: "H3–H5. Acompañamiento durante la docencia",
+  after: "H6. Cierre académico y verificación final",
+};
 const phaseOrder: Phase[] = ["areas", "before", "during", "after"];
 const sectionOrder: Record<Phase, string[]> = {
   areas: ["Talento", "Software", "Calidad", "Bienestar Estudiantil"],
@@ -245,12 +250,13 @@ function lowerInitial(value: string) {
 }
 
 function criterionExplanation(definition: Definition) {
-  const evidence = definition.expected_evidence?.trim();
-  const verification = `Este criterio verifica que ${lowerInitial(definition.observable_competency)} dentro del componente ${definition.process}.`;
-  const support = evidence
-    ? `La comprobación se sustenta en ${lowerInitial(evidence)} y en la trazabilidad registrada en SIACD.`
-    : "La comprobación se sustenta en la evidencia registrada y revisada en SIACD.";
-  return `${verification} ${support}`;
+  const competency = definition.observable_competency.trim().replace(/[.]+$/, "");
+  const evidence = definition.expected_evidence?.trim().replace(/[.]+$/, "");
+  const normalized = competency.replace(/^verifica(?:\s+que)?\s+/i, "").replace(/^que\s+/i, "");
+  const verification = normalized
+    ? `Se verifica ${lowerInitial(normalized)} dentro del componente ${definition.process}.`
+    : `Se verifica el criterio establecido dentro del componente ${definition.process}.`;
+  return evidence ? `${verification} Evidencia esperada: ${evidence}.` : verification;
 }
 
 function scoreInterpretation(score: Score | null) {
@@ -264,28 +270,50 @@ function scoreInterpretation(score: Score | null) {
 }
 
 function conclusionText(summary: Summary, components: ComponentSummary[], stats: DescriptiveStats) {
-  if (summary.evaluated === 0) return `Aún no existe una evaluación registrada para los ${summary.applicable} criterios aplicables. El informe refleja la información disponible hasta que coordinación revise las evidencias y asigne las calificaciones correspondientes.`;
-  const best = components.filter((item) => item.compliance !== null).sort((a, b) => (b.compliance ?? 0) - (a.compliance ?? 0))[0];
-  const attention = components.filter((item) => item.correction + item.pending + item.review + item.resent > 0).sort((a, b) => (b.correction * 3 + b.pending + b.review + b.resent) - (a.correction * 3 + a.pending + a.review + a.resent))[0];
-  const statistical = stats.mean === null ? "" : ` La calificación promedio es ${fmt(stats.mean)} de 4, con una desviación estándar de ${fmt(stats.sd)}.`;
-  if (summary.official) return `La evaluación se encuentra completa. Todos los criterios aplicables fueron evaluados y aprobados, con un cumplimiento evaluado del ${summary.compliance ?? 100} %.${statistical} El informe cumple las condiciones para emitirse como documento oficial.`;
-  return `El avance de evaluación es ${summary.advance} % y el cumplimiento de los criterios evaluados es ${summary.compliance ?? 0} %.${statistical}${best ? ` El componente con mejor desempeño es ${best.name}.` : ""}${attention ? ` La principal atención se concentra en ${attention.name}.` : ""} El proceso continúa con información pendiente de completar o revisar.`;
+  void components;
+  void stats;
+  if (summary.evaluated === 0) {
+    return `El proceso registra 0 % de avance de evaluación: ninguno de los ${summary.applicable} criterios aplicables cuenta todavía con calificación. La información presentada corresponde al estado disponible en SIACD y el proceso continúa abierto para revisión y validación.`;
+  }
+  if (summary.official) {
+    return `La evaluación se encuentra completa: ${summary.evaluated} de ${summary.applicable} criterios aplicables fueron evaluados y aprobados. El cumplimiento de los criterios evaluados es ${summary.compliance ?? 100} % y el proceso cumple las condiciones de cierre establecidas en SIACD.`;
+  }
+  const satisfactory = summary.approved === summary.evaluated
+    ? `Los ${summary.evaluated} criterios evaluados presentan cumplimiento satisfactorio.`
+    : `De los ${summary.evaluated} criterios evaluados, ${summary.approved} se encuentran aprobados.`;
+  const unresolved = Math.max(0, summary.applicable - summary.evaluated);
+  return `El proceso registra un avance de evaluación del ${summary.advance} %, correspondiente a ${summary.evaluated} de ${summary.applicable} criterios aplicables. ${satisfactory} Permanecen ${unresolved} criterios sin calificación y el proceso continúa abierto con información pendiente de completar, revisar y/o validar.`;
 }
 
-function improvementItems(summary: Summary, components: ComponentSummary[]) {
+function findingItems(summary: Summary, components: ComponentSummary[]) {
   const items: string[] = [];
-  const risks = components.filter((item) => item.correction + item.pending + item.review + item.resent > 0).sort((a, b) => (b.correction * 3 + b.pending + b.review + b.resent) - (a.correction * 3 + a.pending + a.review + a.resent)).slice(0, 4);
-  risks.forEach((item) => {
-    const details = [item.correction ? `${item.correction} por corregir` : "", item.pending ? `${item.pending} pendientes` : "", item.review + item.resent ? `${item.review + item.resent} en revisión` : ""].filter(Boolean).join(", ");
+  const unresolved = components
+    .map((item) => ({
+      ...item,
+      unresolved: item.pending + item.review + item.resent + item.correction,
+    }))
+    .filter((item) => item.unresolved > 0)
+    .sort((a, b) => b.unresolved - a.unresolved || b.pending - a.pending);
+
+  unresolved.slice(0, 5).forEach((item) => {
+    const details = [
+      item.pending ? `${item.pending} pendientes` : "",
+      item.review + item.resent ? `${item.review + item.resent} en revisión o reenviados` : "",
+      item.correction ? `${item.correction} por corregir` : "",
+    ].filter(Boolean).join(", ");
     items.push(`${item.name}: ${details}.`);
   });
-  if (!summary.evaluated) items.unshift("Iniciar la revisión de las evidencias recibidas para contar con resultados evaluados.");
-  if (summary.pending) items.push("Completar las evidencias pendientes antes del cierre del acompañamiento.");
-  if (summary.correction) items.push("Priorizar los criterios por corregir y verificar el reenvío del docente.");
-  if (!items.length) items.push("No se identifican aspectos pendientes de mejora en el alcance evaluado.");
-  return [...new Set(items)].slice(0, 6);
-}
 
+  if (unresolved[0]?.pending) {
+    items.unshift(`${unresolved[0].name} concentra el mayor número absoluto de criterios pendientes (${unresolved[0].pending}). Este dato describe volumen pendiente y no constituye un ranking de desempeño.`);
+  }
+  if (summary.pending) items.push("Acción: completar o validar los criterios pendientes según el tipo de verificación definido.");
+  if (summary.review + summary.resent) items.push("Acción: finalizar la revisión de las evidencias recibidas o reenviadas.");
+  if (summary.correction) items.push("Acción: atender los criterios por corregir y verificar la nueva evidencia.");
+  if (!items.length) items.push("No se registran hallazgos o acciones pendientes dentro del alcance evaluado.");
+  items.push("Responsable de revisión y seguimiento: Coordinación de carrera.");
+  return [...new Set(items)].slice(0, 8);
+}
 
 function generationWarnings(
   definition: ReportDefinition,
@@ -303,12 +331,12 @@ function generationWarnings(
   if (summary.total === 0) {
     reasons.push("No existen criterios configurados para el alcance de este informe.");
   } else if (summary.evaluated === 0) {
-    reasons.push(`No existen criterios evaluados de los ${summary.applicable} criterios aplicables.`);
+    reasons.push(`Cobertura de calificación: 0/${summary.applicable}; ningún criterio aplicable tiene calificación.`);
   } else if (summary.evaluated < summary.applicable) {
-    reasons.push(`${summary.applicable - summary.evaluated} criterios aplicables todavía no tienen calificación.`);
+    reasons.push(`Cobertura de calificación: ${summary.evaluated}/${summary.applicable}; ${summary.applicable - summary.evaluated} criterios aplicables aún no tienen calificación.`);
   }
 
-  if (summary.pending > 0) reasons.push(`${summary.pending} criterios permanecen pendientes.`);
+  if (summary.pending > 0) reasons.push(`Estado operativo: ${summary.pending} criterios permanecen pendientes de evidencia o validación.`);
   if (summary.review + summary.resent > 0) reasons.push(`${summary.review + summary.resent} criterios están en revisión o fueron reenviados.`);
   if (summary.correction > 0) reasons.push(`${summary.correction} criterios requieren corrección.`);
 
@@ -318,7 +346,7 @@ function generationWarnings(
       row.workspace?.request?.status === "approved" || row.latest?.status === "approved"
     ).length;
     if (approvedEvidence < evidenceRows.length) {
-      reasons.push(`${evidenceRows.length - approvedEvidence} criterios EVIDENCIA todavía no cuentan con evidencia aprobada.`);
+      reasons.push(`Validación documental: ${evidenceRows.length - approvedEvidence} criterios EVIDENCIA todavía no cuentan con evidencia aprobada.`);
     }
   }
 
@@ -943,33 +971,10 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const drawHeader = () => {
         pageHeader();
 
-        const coverTitleHeight = drawArialCenteredText(documentTitle, pageWidth / 2, 91, 160, 23, true, 5, "#0d2946");
-        void coverTitleHeight;
-
-        const signatureTop = 218;
-        const signatureHeight = 58;
-        const signatureWidth = headerWidth / 3;
-        const signatureColumns = [
-          { heading: "ELABORADO POR:", name: teacher.name, role: "Docente" },
-          { heading: "REVISADO POR:", name: coordinatorName || "—", role: "Coordinador(a) de Carrera" },
-          { heading: "APROBADO POR:", name: generalCoordinatorName || "Ing. Martha Tomalá", role: "Coordinadora General de Carreras" },
-        ];
-
-        pdf.setDrawColor(35, 35, 35);
-        pdf.setLineWidth(0.3);
-        signatureColumns.forEach((item, index) => {
-          const x = headerMargin + index * signatureWidth;
-          pdf.rect(x, signatureTop, signatureWidth, signatureHeight);
-          pdf.line(x, signatureTop + 36, x + signatureWidth, signatureTop + 36);
-          pdf.line(x, signatureTop + 45, x + signatureWidth, signatureTop + 45);
-
-          drawArialCenteredText(item.heading, x + signatureWidth / 2, signatureTop + 2, signatureWidth - 4, 9, true, 1, "#000000");
-          drawArialCenteredText(`Nombre: ${item.name}`, x + signatureWidth / 2, signatureTop + 37, signatureWidth - 4, 9, false, 2, "#000000");
-          drawArialCenteredText(`Cargo: ${item.role}`, x + signatureWidth / 2, signatureTop + 46, signatureWidth - 4, 9, false, 2, "#000000");
-        });
+        drawArialCenteredText(documentTitle, pageWidth / 2, 91, 160, 23, true, 5, "#0d2946");
 
         newPage();
-        section("Datos del documento");
+        section("Datos y control del documento");
         const meta = (label: string, value: string, x: number, top: number, width: number) => {
           pdf.setTextColor(101, 115, 128);
           pdf.setFont(institutionalFont, "bold");
@@ -984,37 +989,44 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         const metaGap = 8;
         const metaCol = (contentWidth - metaGap) / 2;
         pdf.setDrawColor(218, 226, 232);
-        pdf.roundedRect(margin, metaTop - 4, contentWidth, 40, 2, 2, "S");
+        pdf.roundedRect(margin, metaTop - 4, contentWidth, 56, 2, 2, "S");
         meta("Docente", teacher.name, margin + 4, metaTop + 3, metaCol - 8);
         meta("Carrera", teacher.career, margin + metaCol + metaGap, metaTop + 3, metaCol - 8);
         meta("Asignatura", teacher.subject, margin + 4, metaTop + 20, metaCol - 8);
         meta("Período / modalidad", `${teacher.period} · ${teacher.modality}`, margin + metaCol + metaGap, metaTop + 20, metaCol - 8);
-        y = metaTop + 45;
+        meta("Generado por", generatorStaff?.full_name || (accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "Coordinación académica"), margin + 4, metaTop + 37, metaCol - 8);
+        meta("Fecha / fuente", `${formatDate(ecuadorToday())} · SIACD`, margin + metaCol + metaGap, metaTop + 37, metaCol - 8);
+        y = metaTop + 62;
       };
 
       const drawStatsTable = (reportRows: CriterionRow[]) => {
         const current = summarize(reportRows);
         const stats = descriptiveStats(reportRows);
+        const enoughCoverage = current.evaluated >= 5 && current.advance >= 50;
         const finishNote = apaTableTitle(
-          "Resumen estadístico de la evaluación",
-          "El avance se calcula sobre criterios aplicables. El cumplimiento se calcula sobre criterios evaluados. Los criterios No aplica aprobados se excluyen del denominador de criterios aplicables. La desviación estándar corresponde a la población de criterios evaluados incluida en este informe.",
+          "Resumen general de la evaluación",
+          enoughCoverage
+            ? "El avance se calcula sobre criterios aplicables; el cumplimiento se calcula únicamente sobre criterios evaluados. Los indicadores descriptivos se muestran porque existe cobertura suficiente para su lectura complementaria."
+            : "El avance se calcula sobre criterios aplicables y es el indicador principal. El cumplimiento corresponde solo a los criterios ya evaluados; no representa el grado de terminación del proceso. Estado, calificación y evidencia son dimensiones relacionadas, pero no equivalentes ni sumables.",
         );
-        const rowsData = [
-          ["Criterios totales", String(current.total)],
+        const rowsData: string[][] = [
           ["Criterios aplicables", String(current.applicable)],
-          ["No aplica", String(current.na)],
           ["Evaluados", String(current.evaluated)],
           ["Aprobados", String(current.approved)],
-          ["Por corregir", String(current.correction)],
-          ["En revisión", String(current.review + current.resent)],
           ["Pendientes", String(current.pending)],
-          ["Avance de evaluación", `${current.advance}%`],
-          ["Cumplimiento evaluado", current.compliance === null ? "Sin evaluación" : `${current.compliance}%`],
-          ["Media de calificación", stats.mean === null ? "Sin evaluación" : `${fmt(stats.mean)} / 4`],
-          ["Mediana", stats.median === null ? "Sin evaluación" : `${fmt(stats.median, 1)} / 4`],
-          ["Desviación estándar", stats.sd === null ? "Sin evaluación" : fmt(stats.sd)],
-          ["Mínimo – máximo", stats.min === null ? "Sin evaluación" : `${fmt(stats.min, 0)} – ${fmt(stats.max, 0)}`],
+          ["En revisión / reenviados", String(current.review + current.resent)],
+          ["Por corregir", String(current.correction)],
+          ["No aplica", String(current.na)],
+          ["AVANCE GENERAL", `${current.evaluated}/${current.applicable} · ${current.advance}%`],
+          ["Cumplimiento de los criterios ya evaluados", current.compliance === null ? "Sin evaluación" : `${current.approved}/${current.evaluated} · ${current.compliance}%`],
         ];
+        if (enoughCoverage) {
+          rowsData.push(
+            ["Media de calificación", stats.mean === null ? "Sin evaluación" : `${fmt(stats.mean)} / 4`],
+            ["Mediana", stats.median === null ? "Sin evaluación" : `${fmt(stats.median, 1)} / 4`],
+            ["Desviación estándar", stats.sd === null ? "Sin evaluación" : fmt(stats.sd)],
+          );
+        }
         const col1 = 128;
         const rowH = 7.2;
         ensure(rowsData.length * rowH + 10);
@@ -1024,8 +1036,8 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
             pdf.setLineWidth(0.5);
             pdf.line(margin, y - 2, margin + contentWidth, y - 2);
           }
-          pdf.setFont("times", "normal");
-          pdf.setFontSize(8.8);
+          pdf.setFont("times", label === "AVANCE GENERAL" ? "bold" : "normal");
+          pdf.setFontSize(label === "AVANCE GENERAL" ? 9.2 : 8.8);
           pdf.setTextColor(36, 49, 61);
           pdf.text(label, margin + 2, y + 3.5);
           pdf.setFont("times", "bold");
@@ -1038,8 +1050,8 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         finishNote();
       };
 
-      const drawComponentTable = (reportRows: CriterionRow[]) => {
-        const isConsolidated = definition.key === "informe_final";
+      const drawComponentTable = (reportRows: CriterionRow[], forceComponents = false) => {
+        const isConsolidated = definition.key === "informe_final" && !forceComponents;
         const data: ComponentSummary[] = isConsolidated
           ? phaseOrder.map((phase) => {
               const phaseRows = reportRows.filter((row) => phaseForHito(row.definition.hito_id) === phase);
@@ -1086,84 +1098,112 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
 
       const drawExecutive = (reportRows: CriterionRow[], label: string) => {
         const current = summarize(reportRows);
-        const stats = descriptiveStats(reportRows);
         const components = componentSummaries(reportRows);
-        section("Resumen ejecutivo", current.official ? "Evaluación completa y aprobada." : "Estado actual del acompañamiento docente.");
-        const gap = 4;
-        const third = (contentWidth - gap * 2) / 3;
-        card(margin, y, third, 20, "Aprobados", `${current.approved}/${current.applicable}`, colors.approved);
-        card(margin + third + gap, y, third, 20, "Por corregir", String(current.correction), colors.correction);
-        card(margin + (third + gap) * 2, y, third, 20, "Pendientes", String(current.pending), colors.pending);
-        y += 25;
-        const half = (contentWidth - gap) / 2;
-        card(margin, y, half, 20, "En revisión", String(current.review + current.resent), colors.review);
-        card(margin + half + gap, y, half, 20, "No aplica", String(current.na), colors.na);
-        y += 27;
-        card(margin, y, half, 22, "Avance de evaluación", `${current.evaluated}/${current.applicable} · ${current.advance}%`, colors.review);
-        card(margin + half + gap, y, half, 22, "Cumplimiento evaluado", current.compliance === null ? "Sin evaluación" : `${current.approved}/${current.evaluated} · ${current.compliance}%`, colors.approved);
-        y += 30;
 
-        section("Análisis estadístico", "Indicadores descriptivos para interpretar el avance, el cumplimiento y la distribución de calificaciones.");
+        section("Resumen ejecutivo", "El avance general es el indicador principal del estado del proceso.");
+        card(margin, y, contentWidth, 24, "AVANCE GENERAL", `${current.evaluated}/${current.applicable} · ${current.advance}%`, colors.review);
+        y += 30;
+        const gap = 4;
+        const quarter = (contentWidth - gap * 3) / 4;
+        card(margin, y, quarter, 20, "Aplicables", String(current.applicable), colors.pending);
+        card(margin + quarter + gap, y, quarter, 20, "Evaluados", String(current.evaluated), colors.review);
+        card(margin + (quarter + gap) * 2, y, quarter, 20, "Aprobados", String(current.approved), colors.approved);
+        card(margin + (quarter + gap) * 3, y, quarter, 20, "Pendientes", String(current.pending), colors.pending);
+        y += 27;
+        card(
+          margin,
+          y,
+          contentWidth,
+          20,
+          "Cumplimiento de los criterios ya evaluados",
+          current.compliance === null ? "Sin evaluación" : `${current.approved}/${current.evaluated} · ${current.compliance}%`,
+          colors.approved,
+        );
+        y += 27;
+
+        callout("Cómo leer los indicadores", [
+          "Avance: proporción de criterios aplicables que ya cuentan con calificación. Es el indicador principal para saber cuánto del proceso ha sido evaluado.",
+          "Cumplimiento: proporción de criterios aprobados entre los criterios que ya fueron evaluados. No equivale al porcentaje de terminación del proceso.",
+          "Estado: describe la situación operativa del criterio (pendiente, en revisión, reenviado, por corregir, aprobado o No aplica).",
+          "Evidencia: corresponde al soporte documental solicitado, presentado y validado. Un criterio puede estar pendiente de evidencia y, por ello, permanecer sin calificación.",
+          "Estado, calificación y evidencia representan dimensiones diferentes; sus cantidades pueden superponerse y no deben sumarse entre sí.",
+        ], "blue");
+
+        section("Resultados generales", `Resultados consolidados de ${label}.`);
         drawStatsTable(reportRows);
         drawComponentTable(reportRows);
 
-        section("Figuras", "Representación visual de los resultados del informe.");
+        section("Figuras", "Se presentan únicamente las visualizaciones necesarias para comprender el estado general y la distribución por componente.");
         apaFigure(
           "Distribución del estado de los criterios",
           statusDonut(current),
           66,
-          "La figura presenta la frecuencia de criterios aprobados, por corregir, pendientes, en revisión y No aplica. Los datos proceden del expediente SIACD vigente al momento de generar el informe.",
-        );
-        apaFigure(
-          "Distribución de las calificaciones de los criterios evaluados",
-          scoreDistributionChart(stats),
-          62,
-          "Las barras representan la frecuencia de calificaciones de 0/4 a 4/4. Los criterios No aplica y aquellos sin evaluación no forman parte de esta distribución.",
+          "La figura presenta la frecuencia de criterios aprobados, por corregir, pendientes, en revisión y No aplica.",
         );
         const comparison = definition.key === "informe_final" ? phaseBarChart(reportRows) : componentBarChart(components);
         apaFigure(
-          definition.key === "informe_final" ? "Cumplimiento evaluado por etapa" : "Cumplimiento evaluado por componente",
+          definition.key === "informe_final" ? "Avance y cumplimiento por etapa" : "Cumplimiento evaluado por componente",
           comparison,
           68,
-          "El cumplimiento corresponde a la proporción de criterios aprobados entre los criterios efectivamente evaluados. Cuando no existen evaluaciones, se muestra Sin evaluación.",
+          "La comparación debe interpretarse junto con la cobertura de evaluación de cada etapa o componente. Un porcentaje alto con pocos criterios evaluados no implica que el proceso esté completo.",
         );
+      };
 
+      const drawPhaseResults = (phase: Phase, reportRows: CriterionRow[]) => {
+        const phaseRows = reportRows.filter((row) => phaseForHito(row.definition.hito_id) === phase);
+        if (!phaseRows.length) return;
+        const current = summarize(phaseRows);
+        section(phaseLabels[phase], `${phaseRows.length} criterios organizados por componente.`);
+        apaParagraph(
+          `En este hito existen ${current.applicable} criterios aplicables; ${current.evaluated} cuentan con calificación y ${current.pending} permanecen pendientes. El avance del hito es ${current.advance} %.`,
+          { indentFirstLine: false },
+        );
+        drawComponentTable(phaseRows, true);
+      };
+
+      const drawFindings = (reportRows: CriterionRow[]) => {
+        const current = summarize(reportRows);
+        const components = componentSummaries(reportRows);
+        section("Hallazgos y acciones pendientes", "Se describen cantidades y estados observados sin establecer rankings de desempeño con cobertura incompleta.");
+        callout("Hallazgos y seguimiento", findingItems(current, components), "amber");
+      };
+
+      const drawInterpretation = (reportRows: CriterionRow[], label: string) => {
+        const current = summarize(reportRows);
         section("Interpretación de resultados");
-        const narrative = current.evaluated === 0
-          ? `En ${label} aún no existen calificaciones registradas. De ${current.applicable} criterios aplicables, ${current.pending} permanecen pendientes y ${current.review + current.resent} se encuentran en revisión. Por ello, el cumplimiento no debe interpretarse como 0 %, sino como Sin evaluación.`
-          : `En ${label} se han evaluado ${current.evaluated} de ${current.applicable} criterios aplicables (${current.advance} % de avance). El cumplimiento evaluado es ${current.compliance ?? 0} %. La media de calificación es ${fmt(stats.mean)} de 4, la mediana es ${fmt(stats.median, 1)} y la desviación estándar es ${fmt(stats.sd)}.`;
-        apaParagraph(narrative);
+        if (current.evaluated === 0) {
+          apaParagraph(`En ${label} no existen criterios calificados todavía. El avance general es 0 % y la información disponible corresponde principalmente a estados operativos y evidencia pendiente de revisión.`);
+          return;
+        }
+        const complianceText = current.compliance === null ? "Sin evaluación" : `${current.compliance} % (${current.approved}/${current.evaluated})`;
+        apaParagraph(
+          `En ${label} se han evaluado ${current.evaluated} de ${current.applicable} criterios aplicables, lo que representa un avance general del ${current.advance} %. El cumplimiento de los criterios ya evaluados es ${complianceText}. Este segundo indicador describe únicamente el subconjunto evaluado y no debe interpretarse como terminación del proceso.`,
+        );
+      };
 
+      const drawConclusions = (reportRows: CriterionRow[]) => {
+        const current = summarize(reportRows);
         section("Conclusiones");
-        callout("Conclusión del informe", [conclusionText(current, components, stats)], "blue");
-        section("Aspectos por mejorar");
-        callout("Prioridades de mejora", improvementItems(current, components), "amber");
+        callout("Conclusión del informe", [conclusionText(current, componentSummaries(reportRows), descriptiveStats(reportRows))], "blue");
       };
 
       const drawCriterion = (row: CriterionRow) => {
         const evaluator = row.score?.evaluated_by_staff_id ? staffMap.get(row.score.evaluated_by_staff_id) ?? null : null;
-        const titleLines = pdf.splitTextToSize(row.definition.observable_competency, 148);
-        const explanationLines = pdf.splitTextToSize(`Qué se verifica: ${criterionExplanation(row.definition)}`, 164);
-        const expectedEvidence = row.definition.expected_evidence?.trim() ? pdf.splitTextToSize(`Evidencia esperada: ${row.definition.expected_evidence.trim()}`, 164) : [];
+        const titleLines = pdf.splitTextToSize(row.definition.observable_competency, 146);
+        const evidenceText = row.definition.expected_evidence?.trim() || "No especificada";
+        const evidenceLines = pdf.splitTextToSize(`Evidencia esperada: ${evidenceText}`, 164);
+        const grade = row.score?.not_applicable
+          ? "No aplica aprobado"
+          : row.score?.score !== null && row.score?.score !== undefined
+            ? `${row.score.score}/4`
+            : "Sin calificación";
+        const reviewDate = row.latest?.reviewed_at || row.score?.evaluated_at || row.latest?.submitted_at || null;
+        const evaluatorText = evaluator ? `${evaluator.full_name} · ${roleLabel(evaluator.role)}` : "Sin evaluador registrado";
         const observation = row.score?.coordinator_observation?.trim() || "";
-        const observationLines = observation ? pdf.splitTextToSize(`Observación del evaluador: ${observation}`, 164) : [];
-        const trace: string[] = [];
-        (row.latest?.items ?? []).forEach((item) => {
-          if (item.kind === "link") trace.push("Tipo de evidencia presentada: Enlace");
-          else if (item.file_name) trace.push(`Evidencia presentada: ${item.file_name}`);
-        });
-        if (row.latest?.submitted_at) trace.push(`Fecha de carga: ${formatDate(row.latest.submitted_at)}`);
-        const reviewDate = row.latest?.reviewed_at || row.score?.evaluated_at;
-        if (reviewDate) trace.push(`Fecha de revisión: ${formatDate(reviewDate)}`);
-        if (evaluator) trace.push(`Evaluador: ${evaluator.full_name} · ${roleLabel(evaluator.role)}`);
-        const traceLines = trace.flatMap((text) => pdf.splitTextToSize(text, 164));
-        const grade = row.score?.not_applicable ? "No aplica aprobado" : row.score?.score !== null && row.score?.score !== undefined ? `${row.score.score}/4` : "Sin calificación";
-        const interpretationLines = pdf.splitTextToSize(`Interpretación: ${scoreInterpretation(row.score)}`, 164);
-        const boxHeight = Math.max(
-          34,
-          15 + titleLines.length * 4 + explanationLines.length * 3.8 + expectedEvidence.length * 3.7 + interpretationLines.length * 3.7 + observationLines.length * 3.5 + traceLines.length * 3.4 + 18,
-        );
-        ensure(boxHeight + 8);
+        const observationLines = observation ? pdf.splitTextToSize(`Observación: ${observation}`, 164) : [];
+        const boxHeight = Math.max(31, 18 + titleLines.length * 4 + evidenceLines.length * 3.7 + observationLines.length * 3.5 + 11);
+
+        ensure(boxHeight + 6);
         const top = y;
         const [r, g, b] = colors[row.state.key];
         pdf.setFillColor(252, 253, 254);
@@ -1171,52 +1211,43 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         pdf.roundedRect(margin, top, contentWidth, boxHeight, 2, 2, "FD");
         pdf.setFillColor(r, g, b);
         pdf.roundedRect(margin, top, 3, boxHeight, 1.5, 1.5, "F");
+
         pdf.setTextColor(24, 43, 62);
         pdf.setFont("times", "bold");
-        pdf.setFontSize(10);
-        pdf.text(titleLines, margin + 7, top + 8);
-        pdf.setTextColor(r, g, b);
-        pdf.setFontSize(8.5);
-        pdf.text(row.state.label.toUpperCase(), 190, top + 8, { align: "right" });
-        let yy = top + 11 + titleLines.length * 4;
-        pdf.setTextColor(55, 70, 84);
-        pdf.setFont("times", "normal");
         pdf.setFontSize(9.5);
-        pdf.text(explanationLines, margin + 7, yy);
-        yy += explanationLines.length * 3.8 + 2.5;
-        if (expectedEvidence.length) {
-          pdf.setFont("times", "italic");
-          pdf.setTextColor(78, 92, 105);
-          pdf.text(expectedEvidence, margin + 7, yy);
-          yy += expectedEvidence.length * 3.7 + 2.5;
-        }
+        pdf.text(titleLines, margin + 7, top + 7);
+
+        pdf.setTextColor(r, g, b);
+        pdf.setFontSize(8.2);
+        pdf.text(row.state.label.toUpperCase(), 190, top + 7, { align: "right" });
+
+        let yy = top + 10 + titleLines.length * 4;
+        pdf.setFont("times", "normal");
+        pdf.setFontSize(8.7);
+        pdf.setTextColor(70, 83, 96);
+        pdf.text(evidenceLines, margin + 7, yy);
+        yy += evidenceLines.length * 3.7 + 2.3;
+
         pdf.setFont("times", "bold");
         pdf.setTextColor(48, 64, 80);
         pdf.text(`Calificación: ${grade}`, margin + 7, yy);
-        yy += 4.7;
         pdf.setFont("times", "normal");
-        pdf.setTextColor(72, 86, 99);
-        pdf.text(interpretationLines, margin + 7, yy);
-        yy += interpretationLines.length * 3.7 + 2.5;
+        pdf.text(`Fecha: ${reviewDate ? formatDate(reviewDate) : "Sin fecha registrada"}`, margin + 70, yy);
+        yy += 4.4;
+        pdf.text(`Evaluador: ${evaluatorText}`, margin + 7, yy);
+
         if (observationLines.length) {
-          pdf.setFont(bodyFont, "italic");
-          pdf.setFontSize(9.5);
+          yy += 4.3;
+          pdf.setFont("times", "italic");
           pdf.setTextColor(78, 92, 105);
           pdf.text(observationLines, margin + 7, yy);
-          yy += observationLines.length * 3.5 + 2.5;
         }
-        if (traceLines.length) {
-          pdf.setFont("times", "normal");
-          pdf.setFontSize(8.5);
-          pdf.setTextColor(76, 91, 105);
-          pdf.text(traceLines, margin + 7, yy);
-        }
-        y = top + boxHeight + 7;
+        y = top + boxHeight + 5;
       };
 
-      const drawDetails = (reportRows: CriterionRow[], annex = false) => {
+      const drawDetails = (reportRows: CriterionRow[]) => {
         newPage();
-        section(annex ? "Anexo · Detalle completo de criterios" : "Detalle e interpretación de criterios", annex ? "Trazabilidad completa para auditoría." : "Cada criterio incluye explicación, estado, calificación, evidencia, fechas y evaluador.");
+        section("Anexo de trazabilidad de criterios", "Detalle criterio por criterio para auditoría: estado, evidencia esperada, calificación, fecha, evaluador y observaciones.");
         for (const phase of phaseOrder) {
           const phaseRows = reportRows.filter((row) => phaseForHito(row.definition.hito_id) === phase);
           if (!phaseRows.length) continue;
@@ -1258,6 +1289,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       };
 
       const drawClosure = async () => {
+        ensure(150);
         section("Cierre y verificación");
         const evaluatorIds = [...new Set(rows.map((row) => row.score?.evaluated_by_staff_id).filter((value): value is string => Boolean(value)))];
         const evaluators = evaluatorIds.map((id) => staffMap.get(id)).filter((item): item is StaffRow => Boolean(item));
@@ -1267,6 +1299,30 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         if (official) line("Estado: INFORME OFICIAL", 10, true, colors.approved);
         line(`Código del documento: ${documentCode}`, 10, true);
         line(`Código de verificación SIACD: ${verificationCode}`, 9);
+
+        spacer(5);
+        ensure(64);
+        const signatureTop = y;
+        const signatureHeight = 58;
+        const signatureWidth = headerWidth / 3;
+        const signatureColumns = [
+          { heading: "ELABORADO POR:", name: teacher.name, role: "Docente" },
+          { heading: "REVISADO POR:", name: coordinatorName || "—", role: "Coordinador(a) de Carrera" },
+          { heading: "APROBADO POR:", name: generalCoordinatorName || "Ing. Martha Tomalá", role: "Coordinadora General de Carreras" },
+        ];
+        pdf.setDrawColor(35, 35, 35);
+        pdf.setLineWidth(0.3);
+        signatureColumns.forEach((item, index) => {
+          const x = headerMargin + index * signatureWidth;
+          pdf.rect(x, signatureTop, signatureWidth, signatureHeight);
+          pdf.line(x, signatureTop + 36, x + signatureWidth, signatureTop + 36);
+          pdf.line(x, signatureTop + 45, x + signatureWidth, signatureTop + 45);
+          drawArialCenteredText(item.heading, x + signatureWidth / 2, signatureTop + 2, signatureWidth - 4, 9, true, 1, "#000000");
+          drawArialCenteredText(`Nombre: ${item.name}`, x + signatureWidth / 2, signatureTop + 37, signatureWidth - 4, 9, false, 2, "#000000");
+          drawArialCenteredText(`Cargo: ${item.role}`, x + signatureWidth / 2, signatureTop + 46, signatureWidth - 4, 9, false, 2, "#000000");
+        });
+        y = signatureTop + signatureHeight + 6;
+
         ensure(35);
         const qr = await remoteImageDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encodeURIComponent(verificationUrl)}`);
         if (qr) {
@@ -1282,29 +1338,59 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       };
 
       drawHeader();
+
+      if (definition.key === "informe_induccion") {
+        section("Objetivo");
+        apaParagraph("Documentar el proceso de inducción institucional y preparación académica realizado al docente nuevo, presentando el avance de evaluación, los resultados disponibles, los hallazgos y las acciones pendientes registradas en SIACD.");
+
+        section("Alcance y metodología de verificación");
+        apaParagraph("El informe comprende H1. Inducción institucional por áreas y H2. Preparación previa al inicio de la docencia. H1 integra Talento, Software, Calidad y Bienestar Estudiantil; H2 integra Coordinación, Teams, Telegram, PEA, Adaptaciones, EVA y SISACAD.");
+        apaParagraph("La verificación utiliza criterios CHECK y EVIDENCIA. Los criterios CHECK requieren confirmación del docente y verificación de coordinación; los criterios EVIDENCIA requieren soporte documental. La calificación se registra en escala de 0 a 4 y es independiente del estado operativo de la evidencia.");
+      } else {
+        section("Objetivo");
+        apaParagraph("Documentar integralmente el proceso de acompañamiento al docente nuevo durante el período académico, consolidando la inducción, preparación, seguimiento, observación, evidencias, revisiones y cierre registrados en SIACD.");
+
+        section("Alcance y metodología de verificación");
+        apaParagraph("El Informe Final integra H1 a H6. Para facilitar la lectura ejecutiva, los resultados se presentan primero de forma consolidada y por etapa; la trazabilidad completa criterio por criterio se conserva en el anexo.");
+        apaParagraph("La verificación combina criterios CHECK y EVIDENCIA, calificación de 0 a 4, estados operativos y validación documental. Avance, cumplimiento, estado y evidencia son indicadores relacionados, pero no equivalentes.");
+      }
+
       if (warnings.length) {
-        section("Estado de la información", "Este documento se genera con la información disponible en SIACD al momento de la descarga.");
+        section("Estado de la información", "Los siguientes mensajes distinguen cobertura de calificación, estado operativo y validación documental.");
         callout(
           "Información pendiente o incompleta",
           [
             ...warnings,
+            "Las cantidades pueden referirse a dimensiones diferentes del mismo criterio y no deben sumarse entre sí.",
             "El documento refleja la información disponible y puede volver a generarse en cualquier momento con los datos actualizados.",
           ],
           "amber",
         );
       }
+
       if (definition.key === "informe_induccion") {
-        section("Alcance de la inducción", "El informe integra la inducción institucional por áreas (H1) y la preparación académica y tecnológica previa al inicio de la docencia (H2).");
-        apaParagraph("La inducción comprende los procesos institucionales y académicos registrados en SIACD para Talento, Software, Calidad, Bienestar Estudiantil, Coordinación, Teams, PEA, Adaptaciones, EVA y SISACAD. El resultado se presenta con base en la información disponible al momento de generar el documento.");
         drawExecutive(rows, "la inducción y preparación inicial del docente");
-        drawDetails(rows, false);
+        drawPhaseResults("areas", rows);
+        drawPhaseResults("before", rows);
+        drawFindings(rows);
+        drawInterpretation(rows, "la inducción y preparación inicial del docente");
+        drawConclusions(rows);
+        await drawClosure();
+        drawDetails(rows);
       } else {
-        section("Alcance del acompañamiento", "El informe final integra las etapas Áreas, Antes, Durante y Después, correspondientes a los hitos H1 a H6 del expediente.");
-        apaParagraph("El acompañamiento final consolida la inducción inicial, la preparación previa, el seguimiento académico por unidades, la observación de clase, las evidencias, las revisiones y el cierre del período. Los resultados se interpretan mediante avance de evaluación, cumplimiento evaluado, brechas y trazabilidad documental.");
         drawExecutive(rows, "el acompañamiento integral del docente");
+        drawPhaseResults("areas", rows);
+        drawPhaseResults("before", rows);
+        drawPhaseResults("during", rows);
+        drawPhaseResults("after", rows);
         drawHistory();
-        drawDetails(rows, true);
+        drawFindings(rows);
+        drawInterpretation(rows, "el acompañamiento integral del docente");
+        drawConclusions(rows);
+        await drawClosure();
+        drawDetails(rows);
       }
+
       if (isDemo) {
         newPage();
         section("Anexo de evidencias demostrativas", "Imágenes ficticias incorporadas exclusivamente para validar la presentación del documento.");
@@ -1321,7 +1407,6 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
           );
         });
       }
-      await drawClosure();
 
       const pages = pdf.getNumberOfPages();
       for (let page = 1; page <= pages; page += 1) {
