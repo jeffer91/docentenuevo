@@ -13,7 +13,7 @@ import {
 } from "./lib/teacher-directory";
 
 export type TeacherRegistrationCareer = { id: string; name: string; program?: string };
-export type TeacherRegistrationPeriod = { id: string; name: string };
+export type TeacherRegistrationPeriod = { id: string; name: string; startsOn?: string; endsOn?: string };
 export type TeacherScheduleRange = { startTime: string; endTime: string };
 
 export type TeacherRegistrationPrefill = {
@@ -68,6 +68,7 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
     initialTeacher?.careerName ? [initialTeacher.careerName] : [],
   );
   const [directoryCareerToAdd, setDirectoryCareerToAdd] = useState("");
+  const [periodId, setPeriodId] = useState("");
   const [schedules, setSchedules] = useState<TeacherScheduleRange[]>([{ startTime: "", endTime: "" }]);
   const [lookupState, setLookupState] = useState<"idle" | "loading" | "found" | "new" | "error">("idle");
   const [lookupMessage, setLookupMessage] = useState("");
@@ -78,6 +79,10 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
   const assignedCareerLabels = useMemo(
     () => new Map(careers.map((career) => [normalizeDirectoryLabel(career.name), career])),
     [careers],
+  );
+  const selectedPeriod = useMemo(
+    () => periods.find((period) => period.id === periodId) ?? null,
+    [periodId, periods],
   );
 
   async function lookup() {
@@ -165,6 +170,18 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
     }
 
     const form = new FormData(event.currentTarget);
+    const activitiesStartDate = String(form.get("activitiesStartDate") ?? "");
+    if (!periodId) return window.alert("Seleccione el período académico.");
+    if (
+      selectedPeriod
+      && activitiesStartDate
+      && (
+        (selectedPeriod.startsOn && activitiesStartDate < selectedPeriod.startsOn)
+        || (selectedPeriod.endsOn && activitiesStartDate > selectedPeriod.endsOn)
+      )
+    ) {
+      return window.alert(`La fecha de inicio de actividades debe estar dentro del período ${selectedPeriod.name}.`);
+    }
     const currentCareer = careers.find((career) => career.id === careerId);
     const finalDirectoryCareers = mergeDirectoryCareers(directoryCareers, currentCareer ? [currentCareer.name] : []);
 
@@ -173,7 +190,7 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
       name: name.trim(),
       careerId,
       directoryCareers: finalDirectoryCareers,
-      periodId: String(form.get("periodId") ?? ""),
+      periodId,
       subject: String(form.get("subject") ?? ""),
       modality: String(form.get("modality") ?? ""),
       entryDate,
@@ -238,9 +255,9 @@ export default function TeacherRegistrationModal({ careers, periods, coordinator
           </div>
 
           <div className="field"><label>Modalidad</label><select name="modality"><option>Presencial</option><option>Híbrida</option><option>Online</option><option>Intensiva</option></select></div>
-          <div className="field"><label>Período académico</label><select name="periodId" required><option value="">Seleccione un período</option>{periods.map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}</select></div>
+          <div className="field"><label>Período académico</label><select name="periodId" value={periodId} onChange={(event) => setPeriodId(event.target.value)} required><option value="">{periods.length ? "Seleccione un período" : "No existen períodos activos"}</option>{periods.map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}</select>{!periods.length && <small className="teacher-directory-warning">No existen períodos académicos activos. El administrador debe crear o activar uno antes de registrar el expediente.</small>}</div>
           <div className="field"><label>Fecha de ingreso</label><input type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} required /></div>
-          <div className="field"><label>Inicio de actividades</label><input type="date" name="activitiesStartDate" required /></div>
+          <div className="field"><label>Inicio de actividades</label><input type="date" name="activitiesStartDate" min={selectedPeriod?.startsOn} max={selectedPeriod?.endsOn} required /></div>
           <div className="field full"><label>Fecha prevista de cierre</label><input type="date" name="plannedCloseDate" /></div>
 
           <div className="field full"><label>Jornadas / horarios</label><div className="schedule-editor">{schedules.map((schedule, index) => <div className="schedule-range" key={index}><strong>Jornada {index + 1}</strong><div className="field"><label>Desde</label><input type="time" required value={schedule.startTime} onChange={(event) => setSchedules((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, startTime: event.target.value } : row))} /></div><div className="schedule-separator">a</div><div className="field"><label>Hasta</label><input type="time" required value={schedule.endTime} onChange={(event) => setSchedules((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, endTime: event.target.value } : row))} /></div><button type="button" className="icon-button schedule-remove" disabled={schedules.length === 1} onClick={() => setSchedules((current) => current.filter((_, rowIndex) => rowIndex !== index))}><X size={15} /></button></div>)}<button type="button" className="secondary-button schedule-add" onClick={() => setSchedules((current) => [...current, { startTime: "", endTime: "" }])}><Plus size={14} />Agregar otra jornada</button></div></div>
