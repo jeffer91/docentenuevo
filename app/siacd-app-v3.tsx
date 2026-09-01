@@ -732,7 +732,7 @@ export default function SiacdApp({ forcedAccess }: { forcedAccess?: "coordinator
 }
 
 function InstitutionBrand({ compact = false }: { compact?: boolean }) {
-  return <div className={`institution-brand ${compact ? "compact" : ""}`}><img src="/logo-itsqmet.png" alt="Instituto Tecnológico Superior Quito Metropolitano" /><span>SIACD · Acompañamiento Docente</span></div>;
+  return <div className={`institution-brand ${compact ? "compact" : ""}`}><img src={`${import.meta.env.BASE_URL}logo-itsqmet.png`} alt="Instituto Tecnológico Superior Quito Metropolitano" /><span>SIACD · Acompañamiento Docente</span></div>;
 }
 
 function AccessLanding() {
