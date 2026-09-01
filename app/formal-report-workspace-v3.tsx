@@ -244,31 +244,6 @@ function fmt(value: number | null, decimals = 2) {
   return value.toFixed(decimals).replace(".", ",");
 }
 
-function lowerInitial(value: string) {
-  const trimmed = value.trim().replace(/[.]+$/, "");
-  return trimmed ? trimmed.charAt(0).toLowerCase() + trimmed.slice(1) : "el criterio establecido";
-}
-
-function criterionExplanation(definition: Definition) {
-  const competency = definition.observable_competency.trim().replace(/[.]+$/, "");
-  const evidence = definition.expected_evidence?.trim().replace(/[.]+$/, "");
-  const normalized = competency.replace(/^verifica(?:\s+que)?\s+/i, "").replace(/^que\s+/i, "");
-  const verification = normalized
-    ? `Se verifica ${lowerInitial(normalized)} dentro del componente ${definition.process}.`
-    : `Se verifica el criterio establecido dentro del componente ${definition.process}.`;
-  return evidence ? `${verification} Evidencia esperada: ${evidence}.` : verification;
-}
-
-function scoreInterpretation(score: Score | null) {
-  if (score?.not_applicable) return "No aplica aprobado por coordinación.";
-  if (score?.score === null || score?.score === undefined) return "Sin calificación registrada.";
-  if (score.score === 4) return "Cumplimiento integral del criterio.";
-  if (score.score === 3) return "Cumple el criterio establecido.";
-  if (score.score === 2) return "Cumplimiento parcial; requiere acompañamiento y corrección.";
-  if (score.score === 1) return "Cumplimiento incipiente; requiere corrección prioritaria.";
-  return "No cumple el criterio; requiere intervención y nueva evidencia.";
-}
-
 function conclusionText(summary: Summary, components: ComponentSummary[], stats: DescriptiveStats) {
   void components;
   void stats;
@@ -415,37 +390,6 @@ function statusDonut(summary: Summary) {
     ctx.fillText(`${label}: ${value}`, 552, y + 2);
     y += 55;
   });
-  return canvas.toDataURL("image/png");
-}
-
-function scoreDistributionChart(stats: DescriptiveStats) {
-  const prepared = makeCanvas(1000, 390);
-  if (!prepared) return "";
-  const { canvas, ctx } = prepared;
-  const max = Math.max(1, ...stats.distribution);
-  const left = 100;
-  const baseline = 310;
-  const width = 120;
-  const gap = 55;
-  ctx.strokeStyle = "#dfe6ec";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(70, baseline);
-  ctx.lineTo(930, baseline);
-  ctx.stroke();
-  stats.distribution.forEach((count, score) => {
-    const x = left + score * (width + gap);
-    const height = (count / max) * 210;
-    ctx.fillStyle = score >= 3 ? "#2e7d5b" : score === 2 ? "#d09020" : "#c15b37";
-    ctx.fillRect(x, baseline - height, width, height);
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#173f62";
-    ctx.font = "bold 22px Arial";
-    ctx.fillText(String(count), x + width / 2, baseline - height - 14);
-    ctx.font = "19px Arial";
-    ctx.fillText(`${score}/4`, x + width / 2, baseline + 35);
-  });
-  ctx.textAlign = "left";
   return canvas.toDataURL("image/png");
 }
 
