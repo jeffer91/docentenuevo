@@ -279,8 +279,12 @@ function findingItems(summary: Summary, components: ComponentSummary[]) {
     items.push(`${item.name}: ${details}.`);
   });
 
-  if (unresolved[0]?.pending) {
-    items.unshift(`${unresolved[0].name} concentra el mayor número absoluto de criterios pendientes (${unresolved[0].pending}). Este dato describe volumen pendiente y no constituye un ranking de desempeño.`);
+  const mostPending = components
+    .filter((item) => item.pending > 0)
+    .sort((a, b) => b.pending - a.pending || a.name.localeCompare(b.name, "es"))[0];
+
+  if (mostPending) {
+    items.unshift(`${mostPending.name} concentra el mayor número absoluto de criterios pendientes (${mostPending.pending}). Este dato describe volumen pendiente y no constituye un ranking de desempeño.`);
   }
   if (summary.pending) items.push("Acción: completar o validar los criterios pendientes según el tipo de verificación definido.");
   if (summary.review + summary.resent) items.push("Acción: finalizar la revisión de las evidencias recibidas o reenviadas.");
@@ -915,7 +919,25 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
       const drawHeader = () => {
         pageHeader();
 
-        drawArialCenteredText(documentTitle, pageWidth / 2, 91, 160, 23, true, 5, "#0d2946");
+        drawArialCenteredText(documentTitle, pageWidth / 2, 82, 160, 23, true, 5, "#0d2946");
+
+        const coverTop = 142;
+        const coverHeight = 64;
+        const coverGap = 6;
+        const coverCol = (contentWidth - coverGap) / 2;
+        const coverMeta = (label: string, value: string, x: number, top: number, width: number) => {
+          drawArialCenteredText(label.toUpperCase(), x + width / 2, top, width - 4, 9, true, 1, "#657380");
+          drawArialCenteredText(value || "—", x + width / 2, top + 6, width - 4, 9, false, 2, "#1c2a37");
+        };
+        pdf.setDrawColor(205, 215, 224);
+        pdf.setLineWidth(0.25);
+        pdf.roundedRect(margin, coverTop, contentWidth, coverHeight, 2, 2, "S");
+        coverMeta("Docente", teacher.name, margin + 3, coverTop + 5, coverCol - 4);
+        coverMeta("Carrera", teacher.career, margin + coverCol + coverGap, coverTop + 5, coverCol - 4);
+        coverMeta("Asignatura", teacher.subject, margin + 3, coverTop + 24, coverCol - 4);
+        coverMeta("Período", teacher.period, margin + coverCol + coverGap, coverTop + 24, coverCol - 4);
+        coverMeta("Modalidad", teacher.modality, margin + 3, coverTop + 43, coverCol - 4);
+        coverMeta("Versión", String(version), margin + coverCol + coverGap, coverTop + 43, coverCol - 4);
 
         newPage();
         section("Datos y control del documento");
@@ -933,26 +955,19 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
         const metaGap = 8;
         const metaCol = (contentWidth - metaGap) / 2;
         pdf.setDrawColor(218, 226, 232);
-        pdf.roundedRect(margin, metaTop - 4, contentWidth, 56, 2, 2, "S");
-        meta("Docente", teacher.name, margin + 4, metaTop + 3, metaCol - 8);
-        meta("Carrera", teacher.career, margin + metaCol + metaGap, metaTop + 3, metaCol - 8);
-        meta("Asignatura", teacher.subject, margin + 4, metaTop + 20, metaCol - 8);
-        meta("Período / modalidad", `${teacher.period} · ${teacher.modality}`, margin + metaCol + metaGap, metaTop + 20, metaCol - 8);
-        meta("Generado por", generatorStaff?.full_name || (accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "Coordinación académica"), margin + 4, metaTop + 37, metaCol - 8);
-        meta("Fecha / fuente", `${formatDate(ecuadorToday())} · SIACD`, margin + metaCol + metaGap, metaTop + 37, metaCol - 8);
-        y = metaTop + 62;
+        pdf.roundedRect(margin, metaTop - 4, contentWidth, 40, 2, 2, "S");
+        meta("Generado por", generatorStaff?.full_name || (accessMode === "admin" ? "Administrador SIACD" : coordinatorName || "Coordinación académica"), margin + 4, metaTop + 3, metaCol - 8);
+        meta("Fecha de generación", formatDate(ecuadorToday()), margin + metaCol + metaGap, metaTop + 3, metaCol - 8);
+        meta("Fuente de información", "SIACD", margin + 4, metaTop + 20, metaCol - 8);
+        meta("Código / versión", `${documentCode} · Versión ${version}`, margin + metaCol + metaGap, metaTop + 20, metaCol - 8);
+        y = metaTop + 46;
       };
 
       const drawStatsTable = (reportRows: CriterionRow[]) => {
         const current = summarize(reportRows);
         const stats = descriptiveStats(reportRows);
         const enoughCoverage = current.evaluated >= 5 && current.advance >= 50;
-        const finishNote = apaTableTitle(
-          "Resumen general de la evaluación",
-          enoughCoverage
-            ? "El avance se calcula sobre criterios aplicables; el cumplimiento se calcula únicamente sobre criterios evaluados. Los indicadores descriptivos se muestran porque existe cobertura suficiente para su lectura complementaria."
-            : "El avance se calcula sobre criterios aplicables y es el indicador principal. El cumplimiento corresponde solo a los criterios ya evaluados; no representa el grado de terminación del proceso. Estado, calificación y evidencia son dimensiones relacionadas, pero no equivalentes ni sumables.",
-        );
+        const rowH = 7.2;
         const rowsData: string[][] = [
           ["Criterios aplicables", String(current.applicable)],
           ["Evaluados", String(current.evaluated)],
@@ -971,9 +986,14 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
             ["Desviación estándar", stats.sd === null ? "Sin evaluación" : fmt(stats.sd)],
           );
         }
+        ensure(24 + rowsData.length * rowH + 18);
+        const finishNote = apaTableTitle(
+          "Resumen general de la evaluación",
+          enoughCoverage
+            ? "El avance se calcula sobre criterios aplicables; el cumplimiento se calcula únicamente sobre criterios evaluados. Los indicadores descriptivos se muestran porque existe cobertura suficiente para su lectura complementaria."
+            : "El avance se calcula sobre criterios aplicables y es el indicador principal. El cumplimiento corresponde solo a los criterios ya evaluados; no representa el grado de terminación del proceso. Estado, calificación y evidencia son dimensiones relacionadas, pero no equivalentes ni sumables.",
+        );
         const col1 = 128;
-        const rowH = 7.2;
-        ensure(rowsData.length * rowH + 10);
         rowsData.forEach(([label, value], index) => {
           if (index === 0) {
             pdf.setDrawColor(70, 85, 99);
@@ -1002,6 +1022,7 @@ export default function FormalReportWorkspaceV3({ teacher, accessMode, coordinat
               return { name: phaseLabels[phase], ...summarize(phaseRows), stats: descriptiveStats(phaseRows) };
             })
           : componentSummaries(reportRows);
+        ensure(24 + data.length * 8 + 18);
         const finishNote = apaTableTitle(
           isConsolidated ? "Resultados estadísticos por etapa" : "Resultados estadísticos por componente",
           "Los porcentajes se presentan sobre el universo correspondiente a cada etapa o componente. Cuando no existen criterios evaluados, el cumplimiento se reporta como Sin evaluación.",
