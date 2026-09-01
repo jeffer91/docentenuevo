@@ -226,3 +226,25 @@ test("el informe de inducción sigue una arquitectura ejecutiva y deja criterios
   assert.match(formal, /ensure\(24 \+ data\.length \* 8 \+ 18\)/);
 });
 
+
+
+test("el administrador gestiona períodos y el coordinador solo usa períodos activos", async () => {
+  const js = await bundledJavascript();
+  const appSource = await readFile(path.join(root, "app", "siacd-app-v3.tsx"), "utf8");
+  const registrationSource = await readFile(path.join(root, "app", "teacher-registration-modal.tsx"), "utf8");
+  const migration = await readFile(path.join(root, "supabase", "migrations", "20260901170000_academic_period_management_guard.sql"), "utf8");
+
+  assert.match(js, /Períodos académicos/);
+  assert.match(js, /Nuevo período/);
+  assert.match(js, /Guardar período/);
+  assert.match(js, /Desactivar/);
+  assert.match(appSource, /select\("id, name, starts_on, ends_on, active"\)/);
+  assert.match(appSource, /periods\.filter\(\(period\) => period\.active\)/);
+  assert.match(appSource, /El período académico seleccionado ya no está activo/);
+  assert.match(registrationSource, /No existen períodos académicos activos/);
+  assert.match(registrationSource, /min=\{selectedPeriod\?\.startsOn\}/);
+  assert.match(registrationSource, /max=\{selectedPeriod\?\.endsOn\}/);
+  assert.match(migration, /validate_expedient_academic_period/);
+  assert.match(migration, /period_not_available/);
+  assert.match(migration, /activity_date_outside_period/);
+});
