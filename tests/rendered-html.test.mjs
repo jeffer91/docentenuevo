@@ -97,18 +97,20 @@ test("el portal docente incluye el desglose y carga de evidencias", async () => 
   assert.match(js, /Documentación del docente/);
 });
 
-test("los informes siempre permiten generar con información pendiente y jsPDF no se carga al hacer clic", async () => {
+test("los informes siempre permiten generar con información pendiente y existe un solo generador documental", async () => {
   const js = await bundledJavascript();
   const formalSource = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
   const expedientSource = await readFile(path.join(root, "app", "expedient-workspace-v7.tsx"), "utf8");
+  const v8Source = await readFile(path.join(root, "app", "expedient-workspace-v8.tsx"), "utf8");
   const mainSource = await readFile(path.join(root, "app", "static-main.tsx"), "utf8");
   assert.match(js, /Generar de todas formas/);
   assert.match(js, /El informe tiene información pendiente/);
   assert.match(js, /puede volver a generarse en cualquier momento/i);
   assert.match(formalSource, /import \{ jsPDF \} from "jspdf"/);
-  assert.match(expedientSource, /import \{ jsPDF \} from "jspdf"/);
   assert.doesNotMatch(formalSource, /await import\("jspdf"\)/);
-  assert.doesNotMatch(expedientSource, /await import\("jspdf"\)/);
+  assert.doesNotMatch(expedientSource, /jsPDF|generateReport|ReportsView|Generar los 2 informes|BORRADOR/);
+  assert.doesNotMatch(v8Source, /MutationObserver|siacdFormalHidden/);
+  assert.match(v8Source, /FormalReportWorkspace/);
   assert.match(mainSource, /vite:preloadError/);
 });
 
@@ -184,7 +186,7 @@ test("los informes usan Arial en cabecera, título y cuadro de firmas", async ()
   assert.match(js, /Acompañamiento docente/);
   assert.match(js, /CÓDIGO/);
   assert.match(formal, /Arial, sans-serif/);
-  assert.match(formal, /drawArialCenteredText\(documentTitle, pageWidth \/ 2, 91, 160, 23/);
+  assert.match(formal, /drawArialCenteredText\(documentTitle, pageWidth \/ 2, 82, 160, 23/);
   assert.match(formal, /drawArialCenteredText\("Coordinación General de Carreras"/);
   assert.match(formal, /drawArialCenteredText\(item\.heading/);
   assert.doesNotMatch(formal, /coverSubtitle/);
@@ -213,5 +215,14 @@ test("el informe de inducción sigue una arquitectura ejecutiva y deja criterios
   assert.ok(closure >= 0 && annex > closure, "El cierre, firmas y QR deben ir antes del anexo de trazabilidad.");
   assert.match(formal, /ensure\(150\)/);
   assert.match(formal, /const signatureTop = y/);
+  assert.match(formal, /coverMeta\("Docente"/);
+  assert.match(formal, /coverMeta\("Carrera"/);
+  assert.match(formal, /coverMeta\("Asignatura"/);
+  assert.match(formal, /coverMeta\("Período"/);
+  assert.match(formal, /coverMeta\("Modalidad"/);
+  assert.match(formal, /const mostPending = components/);
+  assert.match(formal, /sort\(\(a, b\) => b\.pending - a\.pending/);
+  assert.match(formal, /ensure\(24 \+ rowsData\.length \* rowH \+ 18\)/);
+  assert.match(formal, /ensure\(24 \+ data\.length \* 8 \+ 18\)/);
 });
 
