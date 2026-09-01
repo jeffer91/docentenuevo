@@ -190,3 +190,28 @@ test("los informes usan Arial en cabecera, título y cuadro de firmas", async ()
   assert.doesNotMatch(formal, /coverSubtitle/);
   assert.doesNotMatch(formal, /borrador/i);
 });
+
+test("el informe de inducción sigue una arquitectura ejecutiva y deja criterios en anexo", async () => {
+  const formal = await readFile(path.join(root, "app", "formal-report-workspace-v3.tsx"), "utf8");
+  assert.match(formal, /H1\. Inducción institucional por áreas/);
+  assert.match(formal, /H2\. Preparación previa al inicio de la docencia/);
+  assert.match(formal, /AVANCE GENERAL/);
+  assert.match(formal, /Cumplimiento de los criterios ya evaluados/);
+  assert.match(formal, /Estado, calificación y evidencia representan dimensiones diferentes/);
+  assert.match(formal, /Hallazgos y acciones pendientes/);
+  assert.match(formal, /Anexo de trazabilidad de criterios/);
+  assert.match(formal, /mayor número absoluto de criterios pendientes/);
+  assert.match(formal, /no constituye un ranking de desempeño/);
+  assert.doesNotMatch(formal, /Aspectos por mejorar/);
+  assert.doesNotMatch(formal, /mejor desempeño/i);
+  assert.doesNotMatch(formal, /principal atención se concentra/i);
+  assert.doesNotMatch(formal, /scoreDistributionChart/);
+  assert.doesNotMatch(formal, /verifica que verifica/i);
+
+  const closure = formal.indexOf("await drawClosure();");
+  const annex = formal.indexOf("drawDetails(rows);", closure);
+  assert.ok(closure >= 0 && annex > closure, "El cierre, firmas y QR deben ir antes del anexo de trazabilidad.");
+  assert.match(formal, /ensure\(150\)/);
+  assert.match(formal, /const signatureTop = y/);
+});
+
