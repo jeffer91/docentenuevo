@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ExpedientWorkspaceV7 from "./expedient-workspace-v7";
 import FormalReportWorkspace from "./formal-report-workspace-v3";
 import type { AccessMode, Teacher } from "./siacd-app-v3";
@@ -16,32 +16,6 @@ type Props = {
 
 export default function ExpedientWorkspaceV8(props: Props) {
   const [showReports, setShowReports] = useState(false);
-
-  useEffect(() => {
-    const hidden: HTMLElement[] = [];
-    const hideLegacyReportEntrances = () => {
-      for (const element of Array.from(document.querySelectorAll("button"))) {
-        const text = element.textContent?.trim() ?? "";
-        if (text === "Informes" || text === "Generar los 5 informes" || text === "Generar los 2 informes") {
-          const html = element as HTMLElement;
-          if (html.dataset.siacdFormalHidden === "1") continue;
-          html.dataset.siacdFormalHidden = "1";
-          html.style.display = "none";
-          hidden.push(html);
-        }
-      }
-    };
-    hideLegacyReportEntrances();
-    const observer = new MutationObserver(hideLegacyReportEntrances);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => {
-      observer.disconnect();
-      hidden.forEach((item) => {
-        item.style.removeProperty("display");
-        delete item.dataset.siacdFormalHidden;
-      });
-    };
-  }, []);
 
   return <>
     <ExpedientWorkspaceV7 {...props} />
