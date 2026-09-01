@@ -181,7 +181,7 @@ export default function MonthlyAttendanceWorkspace({
       const label = careerLabel(selectedCareer);
       const institutionalCode = attendanceDocumentCode(label, year, monthNumber);
       const verificationCode = `SIACD-${year}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-      const institutionalLogo = REPORT_LOGO_DATA_URL || await remoteImageDataUrl(new URL("/logo-itsqmet.png", window.location.origin).toString());
+      const institutionalLogo = REPORT_LOGO_DATA_URL || await remoteImageDataUrl(new URL(`${import.meta.env.BASE_URL}logo-itsqmet.png`, window.location.origin).toString());
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
 
       const rowsPerPage = 25;
