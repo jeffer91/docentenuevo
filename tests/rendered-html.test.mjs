@@ -114,8 +114,8 @@ test("los informes siempre permiten generar con información pendiente y jsPDF n
 
 test("los informes distinguen avance, cumplimiento y verificación", async () => {
   const js = await bundledJavascript();
-  assert.match(js, /Avance de evaluación/);
-  assert.match(js, /Cumplimiento evaluado/);
+  assert.match(js, /AVANCE GENERAL/);
+  assert.match(js, /Cumplimiento de los criterios ya evaluados/);
   assert.match(js, /Sin evaluación/);
   assert.match(js, /Verificación de documento/);
   assert.match(js, /Corregido \/ reenviado/);
